@@ -127,13 +127,10 @@
     place-items: center;
     border-radius: 14px;
     background: linear-gradient(135deg, #1b3a6b, #0d1b33);
-    color: #dcecff;
+    color: #e8eefb;
     font-size: 1.8rem;
-    font-weight: 700;
   }
-  .load-error {
-    color: #ff9b9b !important;
-  }
+  .load-error { color: #ff9b9b !important; }
 </style>
 </head>
 <body>
@@ -149,7 +146,7 @@
     the icon, the title and the text. Everything in site/ is published as is;
     the Halo build is added by CI as /halo/.
   -->
-  <p id="load-status" role="status" style="text-align:center;color:var(--muted);margin:0 0 20px;">Checking GitHub for games…</p>
+  <p id="load-status" role="status" style="text-align:center;color:var(--muted);margin:0 0 20px;">Loading games from GitHub…</p>
   <ul class="games" id="games-list"></ul>
 </main>
 
@@ -160,29 +157,30 @@
 
 <script>
 (() => {
+  // The launcher and games are published from this repository's GitHub Pages site.
   const OWNER = "AMoldyWaffle";
   const REPO = "Freedom-Games";
   const BRANCH = "main";
   const API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`;
-  const PAGES_BASE = `https://${OWNER.toLowerCase()}.github.io/${REPO}/`;
 
-  const list = document.getElementById("games-list");
+  const gamesList = document.getElementById("games-list");
   const status = document.getElementById("load-status");
 
-  function displayName(folderName) {
+  function readableName(folderName) {
     return folderName
       .replace(/[-_]+/g, " ")
       .replace(/\s+/g, " ")
-      .replace(/\b\w/g, char => char.toUpperCase());
+      .replace(/\b\w/g, letter => letter.toUpperCase());
   }
 
-  function makeCard(folder) {
+  function createGameCard(folder) {
     const item = document.createElement("li");
     const link = document.createElement("a");
     link.className = "card";
 
-    const folderPath = folder.path.split("/").map(encodeURIComponent).join("/");
-    link.href = PAGES_BASE + folderPath + "/";
+    // Relative URL keeps the game on this same GitHub Pages site/repository.
+    // GitHub Pages will serve the folder's index.html automatically.
+    link.href = "./" + folder.name.split("/").map(encodeURIComponent).join("/") + "/";
 
     const top = document.createElement("div");
     top.className = "card-top";
@@ -194,28 +192,28 @@
 
     const headingArea = document.createElement("div");
     const heading = document.createElement("h2");
-    heading.textContent = displayName(folder.name);
+    heading.textContent = readableName(folder.name);
 
     const tag = document.createElement("span");
     tag.className = "tag";
-    tag.textContent = "GitHub repository folder";
+    tag.textContent = "Game folder";
 
     headingArea.append(heading, tag);
     top.append(icon, headingArea);
 
     const description = document.createElement("p");
-    description.textContent = `Open ${displayName(folder.name)}.`;
+    description.textContent = "Launch " + readableName(folder.name) + ".";
 
-    const open = document.createElement("span");
-    open.className = "play";
-    open.textContent = "Open";
+    const play = document.createElement("span");
+    play.className = "play";
+    play.textContent = "Play";
 
-    link.append(top, description, open);
+    link.append(top, description, play);
     item.append(link);
     return item;
   }
 
-  async function loadFolders() {
+  async function loadGames() {
     try {
       const response = await fetch(API_URL, {
         headers: { "Accept": "application/vnd.github+json" },
@@ -224,24 +222,25 @@
 
       if (!response.ok) {
         if (response.status === 404) {
-          throw new Error("Repository or main branch could not be found.");
+          throw new Error("The repository or main branch could not be found.");
         }
         if (response.status === 403) {
-          throw new Error("GitHub API rate limit reached. Please try again later.");
+          throw new Error("GitHub's API rate limit was reached. Try again later.");
         }
-        throw new Error(`GitHub returned HTTP ${response.status}.`);
+        throw new Error("GitHub returned HTTP " + response.status + ".");
       }
 
-      const contents = await response.json();
-      if (!Array.isArray(contents)) {
-        throw new Error("GitHub returned an unexpected folder listing.");
+      const entries = await response.json();
+      if (!Array.isArray(entries)) {
+        throw new Error("GitHub returned an unexpected repository listing.");
       }
 
-      const folders = contents
+      // Only folders at the repository root are treated as games.
+      const folders = entries
         .filter(entry => entry.type === "dir")
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 
-      list.replaceChildren();
+      gamesList.replaceChildren();
 
       if (folders.length === 0) {
         status.textContent = "No folders were found in the repository.";
@@ -249,18 +248,21 @@
       }
 
       const fragment = document.createDocumentFragment();
-      folders.forEach(folder => fragment.appendChild(makeCard(folder)));
-      list.appendChild(fragment);
+      for (const folder of folders) {
+        fragment.appendChild(createGameCard(folder));
+      }
+      gamesList.appendChild(fragment);
 
-      status.textContent = `Found ${folders.length} folder${folders.length === 1 ? "" : "s"} in Freedom-Games.`;
+      status.textContent = "Found " + folders.length + " game folder" +
+        (folders.length === 1 ? "" : "s") + ".";
     } catch (error) {
-      console.error("Could not load GitHub folders:", error);
-      status.textContent = `Could not load games: ${error.message}`;
+      console.error("Unable to scan the Freedom-Games repository:", error);
+      status.textContent = "Could not load games: " + error.message;
       status.classList.add("load-error");
     }
   }
 
-  loadFolders();
+  loadGames();
 })();
 </script>
 
