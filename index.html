@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Games</title>
+<meta name="description" content="Pick a game to play in your browser.">
+<meta name="theme-color" content="#0b1220">
+<link rel="icon" href="halo/icons/icon-32.png" sizes="32x32">
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #121c30;
+    --panel-hover: #18253f;
+    --border: #243350;
+    --text: #e8eefb;
+    --muted: #9aa8c4;
+    --accent: #4aa3ff;
+    --accent-text: #04111f;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(900px 500px at 50% -10%, #17315c 0%, rgba(11, 18, 32, 0) 70%),
+      var(--bg);
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
+  header {
+    text-align: center;
+    padding: 56px 20px 24px;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(2rem, 5vw, 3rem);
+    letter-spacing: 0.01em;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 16px 20px 40px;
+  }
+  .games {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 20px;
+    gap: 14px;
+    color: inherit;
+    text-decoration: none;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  }
+  .card:hover, .card:focus-visible {
+    transform: translateY(-2px);
+    background: var(--panel-hover);
+    border-color: var(--accent);
+  }
+  .card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .card-top { display: flex; align-items: center; gap: 14px; }
+  .icon {
+    width: 64px;
+    height: 64px;
+    flex: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #1b3a6b, #0d1b33);
+    object-fit: cover;
+  }
+  .card h2 { margin: 0; font-size: 1.25rem; }
+  .tag {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .card p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 0.95rem; }
+  .play {
+    margin-top: auto;
+    align-self: flex-start;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 8px 18px;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    padding: 20px;
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Games</h1>
+  <p>Pick a game to play in your browser.</p>
+</header>
+
+<main>
+  <!--
+    To add a game: put its static files in a folder next to this index.html
+    (site/<name>/index.html), then copy a card below and change the link,
+    the icon, the title and the text. Everything in site/ is published as is;
+    the Halo build is added by CI as /halo/.
+  -->
+  <ul class="games">
+    <li>
+      <a class="card" href="halo/">
+        <div class="card-top">
+          <img class="icon" src="halo/icons/icon-192.png" alt="" width="64" height="64">
+          <div>
+            <h2>Halo: Combat Evolved</h2>
+            <span class="tag">OpenCE &middot; desktop browser</span>
+          </div>
+        </div>
+        <p>The OpenCE port running as WebAssembly. Needs a disc image of your own copy of the game, which is
+          read in your browser and never uploaded. Chrome or Edge recommended.</p>
+        <span class="play">Open</span>
+      </a>
+    </li>
+
+    <!--
+    <li>
+      <a class="card" href="my-game/">
+        <div class="card-top">
+          <img class="icon" src="my-game/icon.png" alt="" width="64" height="64">
+          <div>
+            <h2>My game</h2>
+            <span class="tag">Short label</span>
+          </div>
+        </div>
+        <p>One or two sentences about the game.</p>
+        <span class="play">Play</span>
+      </a>
+    </li>
+    -->
+  </ul>
+</main>
+
+<footer>
+  Halo is a trademark of Microsoft. OpenCE is an independent project and is not affiliated with Microsoft or Bungie.
+  The site serves no game data.
+</footer>
+</body>
+</html>
