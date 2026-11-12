@@ -2,56 +2,269 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Halo CE</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Games</title>
+<meta name="description" content="Pick a game to play in your browser.">
 <meta name="theme-color" content="#0b1220">
+<link rel="icon" href="halo/icons/icon-32.png" sizes="32x32">
 <style>
-  :root { color-scheme: dark; }
-  body {
-    margin: 0; min-height: 100vh; display: grid; place-items: center; text-align: center;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-    background: #0b1220; color: #e8eefb; padding: 20px;
+  :root {
+    --bg: #0b1220;
+    --panel: #121c30;
+    --panel-hover: #18253f;
+    --border: #243350;
+    --text: #e8eefb;
+    --muted: #9aa8c4;
+    --accent: #4aa3ff;
+    --accent-text: #04111f;
   }
-  main { max-width: 520px; }
-  h1 { margin: 0 0 12px; }
-  p { color: #9aa8c4; line-height: 1.5; }
-  a { color: #4aa3ff; }
-  code { background: #121c30; padding: 1px 6px; border-radius: 4px; }
-  .err { color: #ff9b9b; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(900px 500px at 50% -10%, #17315c 0%, rgba(11, 18, 32, 0) 70%),
+      var(--bg);
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
+  header {
+    text-align: center;
+    padding: 56px 20px 24px;
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: clamp(2rem, 5vw, 3rem);
+    letter-spacing: 0.01em;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 1.05rem;
+  }
+  main {
+    flex: 1;
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 16px 20px 40px;
+  }
+  .games {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 20px;
+    gap: 14px;
+    color: inherit;
+    text-decoration: none;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  }
+  .card:hover, .card:focus-visible {
+    transform: translateY(-2px);
+    background: var(--panel-hover);
+    border-color: var(--accent);
+  }
+  .card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .card-top { display: flex; align-items: center; gap: 14px; }
+  .icon {
+    width: 64px;
+    height: 64px;
+    flex: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #1b3a6b, #0d1b33);
+    object-fit: cover;
+  }
+  .card h2 { margin: 0; font-size: 1.25rem; }
+  .tag {
+    display: inline-block;
+    margin-top: 4px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .card p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 0.95rem; }
+  .play {
+    margin-top: auto;
+    align-self: flex-start;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 8px 18px;
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+    padding: 20px;
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--muted); }
+
+  .folder-icon {
+    width: 64px;
+    height: 64px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #1b3a6b, #0d1b33);
+    color: #e8eefb;
+    font-size: 1.8rem;
+  }
+  .load-error { color: #ff9b9b !important; }
 </style>
 </head>
 <body>
+<header>
+  <h1>Games</h1>
+  <p>Pick a game to play in your browser.</p>
+</header>
+
 <main>
-  <h1>Halo CE</h1>
-  <p id="msg">Starting…</p>
-  <p><a href="../">&larr; All games</a></p>
+  <!--
+    To add a game: put its static files in a folder next to this index.html
+    (site/<name>/index.html), then copy a card below and change the link,
+    the icon, the title and the text. Everything in site/ is published as is;
+    the Halo build is added by CI as /halo/.
+  -->
+  <p id="load-status" role="status" style="text-align:center;color:var(--muted);margin:0 0 20px;">Loading games from GitHub…</p>
+  <ul class="games" id="games-list"></ul>
 </main>
+
+<footer>
+  Halo is a trademark of Microsoft. OpenCE is an independent project and is not affiliated with Microsoft or Bungie.
+  The site serves no game data.
+</footer>
+
 <script>
-(async () => {
-  // Where the game's own page is, relative to this folder. If you keep the
-  // built site (index.html, halo.js, halo.wasm, ...) in this folder itself,
-  // set GAME to "./site-in-this-folder" or move this file's job to that page.
-  const GAME = "port/web/site/";
-  const msg = document.getElementById("msg");
-  try {
-    // The page loads halo.js and halo.wasm from its own folder: they exist
-    // only after the web build (ninja web) has been run.
-    const wasm = await fetch(GAME + "halo.wasm", { method: "HEAD", cache: "no-store" });
-    const page = await fetch(GAME + "index.html", { method: "HEAD", cache: "no-store" });
-    if (page.ok && wasm.ok) {
-      location.replace(GAME);
-      return;
-    }
-    msg.classList.add("err");
-    msg.innerHTML = page.ok
-      ? "The game page is here, but <code>halo.wasm</code> (and <code>halo.js</code>) are missing from <code>" +
-        GAME + "</code>. Run the web build and put its output there."
-      : "No game page found at <code>" + GAME + "</code>.";
-  } catch (e) {
-    msg.classList.add("err");
-    msg.textContent = "Could not check for the game: " + e.message;
+(() => {
+  // The launcher and games are published from this repository's GitHub Pages site.
+  const OWNER = "AMoldyWaffle";
+  const REPO = "Freedom-Games";
+  const BRANCH = "main";
+  const API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`;
+
+  const gamesList = document.getElementById("games-list");
+  const status = document.getElementById("load-status");
+
+  function readableName(folderName) {
+    return folderName
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\b\w/g, letter => letter.toUpperCase());
   }
+
+  function createGameCard(folder) {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.className = "card";
+
+    // Relative URL keeps the game on this same GitHub Pages site/repository.
+    // GitHub Pages will serve the folder's index.html automatically.
+    link.href = "./" + folder.name.split("/").map(encodeURIComponent).join("/") + "/";
+
+    const top = document.createElement("div");
+    top.className = "card-top";
+
+    const icon = document.createElement("div");
+    icon.className = "folder-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "▶";
+
+    const headingArea = document.createElement("div");
+    const heading = document.createElement("h2");
+    heading.textContent = readableName(folder.name);
+
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "Game folder";
+
+    headingArea.append(heading, tag);
+    top.append(icon, headingArea);
+
+    const description = document.createElement("p");
+    description.textContent = "Launch " + readableName(folder.name) + ".";
+
+    const play = document.createElement("span");
+    play.className = "play";
+    play.textContent = "Play";
+
+    link.append(top, description, play);
+    item.append(link);
+    return item;
+  }
+
+  async function loadGames() {
+    try {
+      const response = await fetch(API_URL, {
+        headers: { "Accept": "application/vnd.github+json" },
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("The repository or main branch could not be found.");
+        }
+        if (response.status === 403) {
+          throw new Error("GitHub's API rate limit was reached. Try again later.");
+        }
+        throw new Error("GitHub returned HTTP " + response.status + ".");
+      }
+
+      const entries = await response.json();
+      if (!Array.isArray(entries)) {
+        throw new Error("GitHub returned an unexpected repository listing.");
+      }
+
+      // Only folders at the repository root are treated as games.
+      const folders = entries
+        .filter(entry => entry.type === "dir")
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+      gamesList.replaceChildren();
+
+      if (folders.length === 0) {
+        status.textContent = "No folders were found in the repository.";
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (const folder of folders) {
+        fragment.appendChild(createGameCard(folder));
+      }
+      gamesList.appendChild(fragment);
+
+      status.textContent = "Found " + folders.length + " game folder" +
+        (folders.length === 1 ? "" : "s") + ".";
+    } catch (error) {
+      console.error("Unable to scan the Freedom-Games repository:", error);
+      status.textContent = "Could not load games: " + error.message;
+      status.classList.add("load-error");
+    }
+  }
+
+  loadGames();
 })();
 </script>
+
 </body>
 </html>
