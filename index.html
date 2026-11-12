@@ -118,6 +118,22 @@
     border-top: 1px solid var(--border);
   }
   footer a { color: var(--muted); }
+
+  .folder-icon {
+    width: 64px;
+    height: 64px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #1b3a6b, #0d1b33);
+    color: #dcecff;
+    font-size: 1.8rem;
+    font-weight: 700;
+  }
+  .load-error {
+    color: #ff9b9b !important;
+  }
 </style>
 </head>
 <body>
@@ -133,43 +149,120 @@
     the icon, the title and the text. Everything in site/ is published as is;
     the Halo build is added by CI as /halo/.
   -->
-  <ul class="games">
-    <li>
-      <a class="card" href="halo/">
-        <div class="card-top">
-          <img class="icon" src="halo/icons/icon-192.png" alt="" width="64" height="64">
-          <div>
-            <h2>Halo: Combat Evolved</h2>
-            <span class="tag">OpenCE &middot; desktop browser</span>
-          </div>
-        </div>
-        <p>The OpenCE port running as WebAssembly. Needs a disc image of your own copy of the game, which is
-          read in your browser and never uploaded. Chrome or Edge recommended.</p>
-        <span class="play">Open</span>
-      </a>
-    </li>
-
-    <!--
-    <li>
-      <a class="card" href="my-game/">
-        <div class="card-top">
-          <img class="icon" src="my-game/icon.png" alt="" width="64" height="64">
-          <div>
-            <h2>My game</h2>
-            <span class="tag">Short label</span>
-          </div>
-        </div>
-        <p>One or two sentences about the game.</p>
-        <span class="play">Play</span>
-      </a>
-    </li>
-    -->
-  </ul>
+  <p id="load-status" role="status" style="text-align:center;color:var(--muted);margin:0 0 20px;">Checking GitHub for games…</p>
+  <ul class="games" id="games-list"></ul>
 </main>
 
 <footer>
   Halo is a trademark of Microsoft. OpenCE is an independent project and is not affiliated with Microsoft or Bungie.
   The site serves no game data.
 </footer>
+
+<script>
+(() => {
+  const OWNER = "AMoldyWaffle";
+  const REPO = "Freedom-Games";
+  const BRANCH = "main";
+  const API_URL = `https://api.github.com/repos/${OWNER}/${REPO}/contents/?ref=${BRANCH}`;
+  const PAGES_BASE = `https://${OWNER.toLowerCase()}.github.io/${REPO}/`;
+
+  const list = document.getElementById("games-list");
+  const status = document.getElementById("load-status");
+
+  function displayName(folderName) {
+    return folderName
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\b\w/g, char => char.toUpperCase());
+  }
+
+  function makeCard(folder) {
+    const item = document.createElement("li");
+    const link = document.createElement("a");
+    link.className = "card";
+
+    const folderPath = folder.path.split("/").map(encodeURIComponent).join("/");
+    link.href = PAGES_BASE + folderPath + "/";
+
+    const top = document.createElement("div");
+    top.className = "card-top";
+
+    const icon = document.createElement("div");
+    icon.className = "folder-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "▶";
+
+    const headingArea = document.createElement("div");
+    const heading = document.createElement("h2");
+    heading.textContent = displayName(folder.name);
+
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "GitHub repository folder";
+
+    headingArea.append(heading, tag);
+    top.append(icon, headingArea);
+
+    const description = document.createElement("p");
+    description.textContent = `Open ${displayName(folder.name)}.`;
+
+    const open = document.createElement("span");
+    open.className = "play";
+    open.textContent = "Open";
+
+    link.append(top, description, open);
+    item.append(link);
+    return item;
+  }
+
+  async function loadFolders() {
+    try {
+      const response = await fetch(API_URL, {
+        headers: { "Accept": "application/vnd.github+json" },
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Repository or main branch could not be found.");
+        }
+        if (response.status === 403) {
+          throw new Error("GitHub API rate limit reached. Please try again later.");
+        }
+        throw new Error(`GitHub returned HTTP ${response.status}.`);
+      }
+
+      const contents = await response.json();
+      if (!Array.isArray(contents)) {
+        throw new Error("GitHub returned an unexpected folder listing.");
+      }
+
+      const folders = contents
+        .filter(entry => entry.type === "dir")
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+
+      list.replaceChildren();
+
+      if (folders.length === 0) {
+        status.textContent = "No folders were found in the repository.";
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      folders.forEach(folder => fragment.appendChild(makeCard(folder)));
+      list.appendChild(fragment);
+
+      status.textContent = `Found ${folders.length} folder${folders.length === 1 ? "" : "s"} in Freedom-Games.`;
+    } catch (error) {
+      console.error("Could not load GitHub folders:", error);
+      status.textContent = `Could not load games: ${error.message}`;
+      status.classList.add("load-error");
+    }
+  }
+
+  loadFolders();
+})();
+</script>
+
 </body>
 </html>
