@@ -67,8 +67,6 @@ async function readStorageText(name) {
 
 async function downloadLog() {
   let text = `OpenCE web ${JSON.stringify(stamp)}\n${navigator.userAgent}\n\n` + log.join('\n') + '\n';
-  // (debug.txt, which the game writes, when it is not open: before or after
-  // a game)
   if (!gameStarted || gameStopped) {
     const debug = await readStorageText('debug.txt');
     if (debug) text += '\n---------- debug.txt\n' + debug.slice(-2000000);
@@ -118,7 +116,7 @@ async function checkForUpdate() {
       $('update').hidden = false;
     }
   } catch {
-    // offline: the build there is plays
+    // offline
   }
 }
 
@@ -143,7 +141,6 @@ async function isolate() {
     logLine('service worker: ' + error);
     return;
   }
-  // once: a page the worker still does not isolate stays as it is
   if (!sessionStorage.getItem('opence-isolating')) {
     sessionStorage.setItem('opence-isolating', '1');
     $('checks-note').textContent = 'Preparing the page (it loads once more)…';
@@ -227,7 +224,7 @@ function formatBytes(bytes) {
 
 async function refreshData() {
   dataReady = false;
-  let text = 'No game data yet: click the button above to download and combine the ROM from GitHub.';
+  let text = 'No game data yet: click the button above to download and combine the ROM.';
   try {
     const root = await navigator.storage.getDirectory();
     const maps = await root.getDirectoryHandle('maps');
@@ -236,7 +233,7 @@ async function refreshData() {
     text = `${complete.files.length} files of maps (${formatBytes(complete.bytes)}), ready.`;
     dataReady = true;
   } catch {
-    // none, or a copy that did not finish
+    // none
   }
   $('data-status').textContent = text;
   $('delete-data').disabled = !dataReady;
@@ -320,7 +317,7 @@ function setImporting(importing) {
   $('play').disabled = busy || !canPlay();
 }
 
-// ---------- GitHub ROM Downloader & Combiner
+// ---------- Parallel ROM Downloader & Combiner
 
 async function downloadAndCombineROM() {
   const release = await beginStorageTask('import-text');
@@ -328,7 +325,7 @@ async function downloadAndCombineROM() {
 
   $('import-progress').hidden = false;
   $('import-bar').style.width = '0';
-  $('import-text').textContent = 'Connecting to GitHub repository...';
+  $('import-text').textContent = 'Connecting and preparing parallel download...';
   setImporting(true);
 
   if (navigator.storage && navigator.storage.persist) {
@@ -337,15 +334,17 @@ async function downloadAndCombineROM() {
 
   const totalParts = 120;
   const baseUrl = 'https://raw.githubusercontent.com/AMoldyWaffle/HaloCEROM/main/Halo%20-%20Combat%20Evolved%20(USA)%20(Rev%201).xiso_part_';
-  const chunks = [];
+  const chunks = new Array(totalParts);
+  let completedCount = 0;
   let totalBytesLoaded = 0;
 
+  // Maximum concurrent downloads to avoid overwhelming browser sockets
+  const concurrencyLimit = 8;
+
   try {
-    for (let i = 1; i <= totalParts; i++) {
+    async function fetchPart(i) {
       const partNum = String(i).padStart(3, '0');
       const url = `${baseUrl}${partNum}.iso`;
-
-      $('import-text').textContent = `Downloading part ${i} of ${totalParts}...`;
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -353,13 +352,32 @@ async function downloadAndCombineROM() {
       }
 
       const buffer = await response.arrayBuffer();
-      chunks.push(buffer);
+      chunks[i - 1] = buffer;
+      completedCount++;
       totalBytesLoaded += buffer.byteLength;
 
-      const percent = (i / totalParts) * 100;
+      const percent = (completedCount / totalParts) * 100;
       $('import-bar').style.width = percent.toFixed(1) + '%';
-      $('import-text').textContent = `Downloaded part ${i} of ${totalParts} (${formatBytes(totalBytesLoaded)})`;
+      $('import-text').textContent = `Downloaded ${completedCount} of ${totalParts} parts (${formatBytes(totalBytesLoaded)})`;
     }
+
+    // Run queue in batches of concurrencyLimit
+    let currentIndex = 0;
+    async function workerPool() {
+      while (currentIndex < totalParts) {
+        const currentTask = currentIndex++;
+        if (currentTask < totalParts) {
+          await fetchPart(currentTask + 1);
+        }
+      }
+    }
+
+    const workers = [];
+    for (let w = 0; w < Math.min(concurrencyLimit, totalParts); w++) {
+      workers.push(workerPool());
+    }
+
+    await Promise.all(workers);
 
     $('import-text').textContent = 'Combining parts into disc image...';
     const combinedBlob = new Blob(chunks, { type: 'application/octet-stream' });
@@ -378,7 +396,7 @@ async function downloadAndCombineROM() {
 
 $('download-rom-btn').addEventListener('click', downloadAndCombineROM);
 
-// CE and MCC imports have separate format policy and storage roots[cite: 2].
+// CE and MCC imports[cite: 2]
 let mapImportWorker = null;
 const mapImportControls = ['ce-files-input', 'ce-folder-input', 'mcc-folder-input', 'mcc-package-name'];
 
