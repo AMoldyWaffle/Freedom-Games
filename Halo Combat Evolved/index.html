@@ -111,7 +111,34 @@
   </div>
 </div>
 
-<div id="fatal" class="sheet" role="alertdialog" aria-labelledby="fatal-title" hidden>
+
+<div id="startup-error" class="sheet" role="alertdialog" aria-labelledby="startup-error-title" hidden>
+  <div class="sheet-body">
+    <h2 id="startup-error-title">OpenCE couldn't start</h2>
+    <p id="startup-error-message"></p>
+    <pre id="startup-error-details"></pre>
+    <div class="actions">
+      <button id="startup-error-copy">Copy error</button>
+      <button id="startup-error-reload" class="primary">Reload</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  #startup-error { z-index: 10000; }
+  #startup-error .sheet-body { max-width: 680px; }
+  #startup-error-details {
+    max-height: 35vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    padding: 12px;
+    border-radius: 6px;
+    background: rgba(0,0,0,.28);
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+</style>
+\n<div id="fatal" class="sheet" role="alertdialog" aria-labelledby="fatal-title" hidden>
   <div class="sheet-body">
     <h2 id="fatal-title">The game stopped</h2>
     <p id="fatal-text"></p>
@@ -133,6 +160,107 @@
 <script src="p2p.js"></script>
 <script src="servers.js"></script>
 <script src="map-import-storage.js"></script>
-<script src="app.js"></script>
+<script src="app.js"></script>\n
+<script>
+(() => {
+  "use strict";
+
+  const panel = document.getElementById("startup-error");
+  const messageEl = document.getElementById("startup-error-message");
+  const detailsEl = document.getElementById("startup-error-details");
+  const copyButton = document.getElementById("startup-error-copy");
+  const reloadButton = document.getElementById("startup-error-reload");
+  let lastErrorText = "";
+  let alreadyShown = false;
+
+  function showStartupError(title, message, details) {
+    lastErrorText = [title, message, details].filter(Boolean).join("\\n\\n");
+    document.getElementById("startup-error-title").textContent = title;
+    messageEl.textContent = message || "An unknown error prevented OpenCE from running.";
+    detailsEl.textContent = details || "No additional error details were provided.";
+    panel.hidden = false;
+
+    const playButton = document.getElementById("play");
+    if (playButton) playButton.disabled = true;
+
+    const starting = document.getElementById("starting");
+    if (starting) starting.hidden = true;
+  }
+
+  // Catch errors thrown by app.js and other scripts.
+  window.addEventListener("error", (event) => {
+    // Resource-load errors do not always provide an Error object.
+    if (event.target && event.target !== window) {
+      const resource = event.target.src || event.target.href || event.target.tagName || "Unknown resource";
+      showStartupError(
+        "A required file couldn't load",
+        "OpenCE could not load one of its required files. Check that the file exists and that the browser can access it.",
+        "Resource: " + resource
+      );
+      return;
+    }
+
+    showStartupError(
+      "OpenCE encountered an error",
+      event.message || "A JavaScript error stopped the application.",
+      (event.filename || "Unknown file") +
+        (event.lineno ? ":" + event.lineno : "") +
+        (event.colno ? ":" + event.colno : "") +
+        (event.error && event.error.stack ? "\\n\\n" + event.error.stack : "")
+    );
+  }, true);
+
+  // Catch rejected promises that were not handled by the application.
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason;
+    const details = reason && reason.stack
+      ? reason.stack
+      : String(reason == null ? "No rejection details were provided." : reason);
+
+    showStartupError(
+      "OpenCE couldn't complete an operation",
+      "An asynchronous operation failed and the application did not handle the error.",
+      details
+    );
+  });
+
+  // Check the browser features needed for the isolated/shared-memory build.
+  window.addEventListener("load", () => {
+    const problems = [];
+
+    if (!window.WebAssembly) problems.push("WebAssembly is not available in this browser.");
+    if (!window.SharedArrayBuffer) problems.push("SharedArrayBuffer is unavailable.");
+    if (!window.crossOriginIsolated) {
+      problems.push("This page is not cross-origin isolated. The COOP/COEP headers or isolation service worker may not be active.");
+    }
+
+    if (problems.length) {
+      showStartupError(
+        "This browser environment can't run OpenCE",
+        "OpenCE is missing browser features required by this build. Try opening it from a supported HTTPS host and make sure cross-origin isolation is enabled.",
+        problems.join("\\n")
+      );
+    }
+  });
+
+  copyButton.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(lastErrorText);
+      copyButton.textContent = "Copied";
+    } catch (_) {
+      detailsEl.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(detailsEl);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      copyButton.textContent = "Select and copy";
+    }
+  });
+
+  reloadButton.addEventListener("click", () => window.location.reload());
+})();
+</script>
+
 </body>
 </html>
