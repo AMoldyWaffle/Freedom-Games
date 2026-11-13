@@ -1,39 +1,26 @@
 /*
 APP.JS
 
-The launcher page (index.html)[cite: 1]: it checks that the browser can run the game,
+The launcher page (index.html): it checks that the browser can run the game,
 copies the game data in from the player's disc image (xiso-worker.js) and
-the player's mods (mods-worker.js), and starts the game (halo.js and halo.wasm: tools/web_build.py), whose canvas
-then fills the page[cite: 2].
+the player's mods (mods-worker.js), and starts the game (halo.js and halo.wasm),
+whose canvas then fills the page.
 
 - The game's threads need SharedArrayBuffer, so a cross-origin isolated
   page: GitHub Pages cannot send the headers for it, the service worker
-  (sw.js) adds them, and the first visit loads the page once more under it[cite: 2].
+  (sw.js) adds them, and the first visit loads the page once more under it.
 - The game reads its maps, and keeps its saved games, config.toml and
-  debug.txt, in the Origin Private File System (port/web/src/web_main.c
-  mounts it at /data)[cite: 2]. Each origin has its own: the github.io address and
-  the site's own domain do not share them[cite: 2].
-- Query parameters, for testing: ?set=NAME=value (any number) passes a
-  setting's environment variable (port/linux/README.md, the settings
-  table), ?room=<secret> joins a room (net.js; ?brokers= names other
-  message brokers, for internet play's signalling too), ?menu=<screen> opens
-  a menu screen (debug.menu_open), ?map=<level> starts a level (a10, or
-  levels\a10\a10: the init.txt the game reads, which the page removes again
-  the next time), ?play starts the game at once when it can[cite: 2].
-- ?join=<invite> (a halo://join/ link's code, which native builds and the
-  game here make: port/linux/src/p2p.c) joins that internet game once the
-  game starts; the Servers panel (servers.js) sets it with Play here[cite: 2].
+  debug.txt, in the Origin Private File System.
 */
 
 'use strict';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-// the Xbox window ends the game's memory: tools/web_build.py WEB_MEMORY_BYTES
 const WEB_MEMORY_BYTES = 0x88000000;
 const MAXIMUM_LOG_LINES = 20000;
 
-// ---------- the log: the game's output, for the player to send
+// ---------- logging
 
 const log = [];
 
@@ -42,7 +29,9 @@ function logLine(text) {
     if (line === '') continue;
     log.push(line);
   }
-  if (log.length > MAXIMUM_LOG_LINES) log.splice(0, log.length - MAXIMUM_LOG_LINES);
+  if (log.length > MAXIMUM_LOG_LINES) {
+    log.splice(0, log.length - MAXIMUM_LOG_LINES);
+  }
 }
 
 function download(name, blob) {
@@ -66,15 +55,19 @@ async function readStorageText(name) {
 }
 
 async function downloadLog() {
-  let text = `OpenCE web ${JSON.stringify(stamp)}\n${navigator.userAgent}\n\n` + log.join('\n') + '\n';
+  let text = `OpenCE web ${JSON.stringify(stamp)}\n${navigator.userAgent}\n\n` +
+    log.join('\n') + '\n';
+
   if (!gameStarted || gameStopped) {
     const debug = await readStorageText('debug.txt');
     if (debug) text += '\n---------- debug.txt\n' + debug.slice(-2000000);
   }
-  download('opence-web-log.txt', new Blob([text], { type: 'text/plain' }));
+
+  download('opence-web-log.txt',
+    new Blob([text], { type: 'text/plain' }));
 }
 
-// ---------- errors: the game's own, not a browser extension's
+// ---------- errors
 
 function isExtensionNoise(message, source) {
   const text = String(message || '') + ' ' + String(source || '');
@@ -83,8 +76,10 @@ function isExtensionNoise(message, source) {
 
 window.addEventListener('error', (event) => {
   if (isExtensionNoise(event.message, event.filename)) return;
-  logLine('page error: ' + (event.error && event.error.stack ? event.error.stack : event.message));
+  logLine('page error: ' +
+    (event.error && event.error.stack ? event.error.stack : event.message));
 });
+
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason;
   const text = reason && reason.stack ? reason.stack : String(reason);
@@ -92,27 +87,45 @@ window.addEventListener('unhandledrejection', (event) => {
   logLine('page error: ' + text);
 });
 
-// ---------- the build (version.json) and its updates
+// ---------- build information
 
 let stamp = {};
 
 async function loadStamp() {
   try {
-    stamp = await (await fetch('version.json', { cache: 'no-cache' })).json();
+    stamp = await (await fetch('version.json', {
+      cache: 'no-cache'
+    })).json();
   } catch {
     stamp = {};
   }
-  $('about-build').textContent = stamp.build ? `${stamp.build} (${stamp.flavor})` : `local (${stamp.flavor || 'unknown'})`;
-  $('about-commit').textContent = stamp.commit ? stamp.commit.slice(0, 12) : '–';
-  $('about-network').textContent = stamp.network_version != null ? String(stamp.network_version) : '–';
+
+  $('about-build').textContent = stamp.build
+    ? `${stamp.build} (${stamp.flavor})`
+    : `local (${stamp.flavor || 'unknown'})`;
+
+  $('about-commit').textContent =
+    stamp.commit ? stamp.commit.slice(0, 12) : '–';
+
+  $('about-network').textContent =
+    stamp.network_version != null ? String(stamp.network_version) : '–';
 }
 
 async function checkForUpdate() {
-  if (!navigator.serviceWorker || !navigator.serviceWorker.controller || !stamp.version) return;
+  if (!navigator.serviceWorker ||
+      !navigator.serviceWorker.controller ||
+      !stamp.version) return;
+
   try {
-    const latest = await (await fetch('version.json?latest', { cache: 'no-store' })).json();
+    const latest = await (
+      await fetch('version.json?latest', { cache: 'no-store' })
+    ).json();
+
     if (latest.version && latest.version !== stamp.version) {
-      $('update-text').textContent = latest.build ? `Build ${latest.build} is out.` : 'A new build is out.';
+      $('update-text').textContent = latest.build
+        ? `Build ${latest.build} is out.`
+        : 'A new build is out.';
+
       $('update').hidden = false;
     }
   } catch {
@@ -123,17 +136,25 @@ async function checkForUpdate() {
 $('update-button').addEventListener('click', () => {
   $('update-button').disabled = true;
   $('update-text').textContent = 'Updating…';
+
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data === 'updated') location.reload();
-    else if (event.data === 'update-failed') $('update-text').textContent = 'The update could not be downloaded.';
+    else if (event.data === 'update-failed') {
+      $('update-text').textContent =
+        'The update could not be downloaded.';
+    }
   });
+
   navigator.serviceWorker.controller.postMessage('update');
 });
 
-// ---------- cross-origin isolation (sw.js)[cite: 2]
+// ---------- cross-origin isolation
 
 async function isolate() {
-  if (window.crossOriginIsolated || !('serviceWorker' in navigator) || !window.isSecureContext) return;
+  if (window.crossOriginIsolated ||
+      !('serviceWorker' in navigator) ||
+      !window.isSecureContext) return;
+
   try {
     await navigator.serviceWorker.register('sw.js');
     await navigator.serviceWorker.ready;
@@ -141,53 +162,86 @@ async function isolate() {
     logLine('service worker: ' + error);
     return;
   }
+
   if (!sessionStorage.getItem('opence-isolating')) {
     sessionStorage.setItem('opence-isolating', '1');
-    $('checks-note').textContent = 'Preparing the page (it loads once more)…';
+
+    $('checks-note').textContent =
+      'Preparing the page (it loads once more)…';
+
     $('checks-note').hidden = false;
+
     location.reload();
     await new Promise(() => {});
   }
 }
 
-// ---------- the browser's checks
+// ---------- browser checks
 
 const results = {};
 
 function addCheck(name, state, text, detail) {
   results[name] = state;
+
   const item = document.createElement('li');
   item.className = state;
   item.append(text);
+
   if (detail) {
     const span = document.createElement('span');
     span.className = 'detail';
     span.textContent = ' ' + detail;
     item.append(span);
   }
+
   $('checks').append(item);
 }
 
 function workerWebGL2() {
   return new Promise((resolve) => {
-    const source = "try { postMessage(!!new OffscreenCanvas(1, 1).getContext('webgl2')); } catch (e) { postMessage(false); }";
+    const source =
+      "try { postMessage(!!new OffscreenCanvas(1, 1).getContext('webgl2')); } catch (e) { postMessage(false); }";
+
     let worker;
+
     try {
-      worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+      worker = new Worker(URL.createObjectURL(
+        new Blob([source], { type: 'text/javascript' })
+      ));
     } catch {
       resolve(false);
       return;
     }
-    const timer = setTimeout(() => { worker.terminate(); resolve(false); }, 5000);
-    worker.onmessage = (event) => { clearTimeout(timer); worker.terminate(); resolve(event.data === true); };
-    worker.onerror = () => { clearTimeout(timer); worker.terminate(); resolve(false); };
+
+    const timer = setTimeout(() => {
+      worker.terminate();
+      resolve(false);
+    }, 5000);
+
+    worker.onmessage = (event) => {
+      clearTimeout(timer);
+      worker.terminate();
+      resolve(event.data === true);
+    };
+
+    worker.onerror = () => {
+      clearTimeout(timer);
+      worker.terminate();
+      resolve(false);
+    };
   });
 }
 
 function memoryAvailable() {
   try {
     const pages = WEB_MEMORY_BYTES / 65536;
-    new WebAssembly.Memory({ initial: pages, maximum: pages, shared: true });
+
+    new WebAssembly.Memory({
+      initial: pages,
+      maximum: pages,
+      shared: true
+    });
+
     return true;
   } catch {
     return false;
@@ -196,70 +250,145 @@ function memoryAvailable() {
 
 async function runChecks() {
   $('checks').textContent = '';
-  addCheck('secure', window.isSecureContext ? 'good' : 'bad', 'A secure page (https)');
-  addCheck('isolated', window.crossOriginIsolated ? 'good' : 'bad', 'Threads (cross-origin isolation)',
-    window.crossOriginIsolated ? '' : 'reload the page; a private window may not allow it');
-  const webgl = typeof OffscreenCanvas !== 'undefined' && await workerWebGL2();
-  addCheck('webgl', webgl ? 'good' : 'bad', 'WebGL 2 from a worker');
-  const opfs = !!(navigator.storage && navigator.storage.getDirectory);
-  addCheck('opfs', opfs ? 'good' : 'bad', "The site's private storage (OPFS)");
-  const locks = !!(navigator.locks && navigator.locks.request && navigator.locks.query);
-  addCheck('locks', locks ? 'good' : 'bad', 'Safe storage between tabs (Web Locks)',
+
+  addCheck('secure',
+    window.isSecureContext ? 'good' : 'bad',
+    'A secure page (https)');
+
+  addCheck('isolated',
+    window.crossOriginIsolated ? 'good' : 'bad',
+    'Threads (cross-origin isolation)',
+    window.crossOriginIsolated
+      ? ''
+      : 'reload the page; a private window may not allow it');
+
+  const webgl =
+    typeof OffscreenCanvas !== 'undefined' && await workerWebGL2();
+
+  addCheck('webgl', webgl ? 'good' : 'bad',
+    'WebGL 2 from a worker');
+
+  const opfs = !!(
+    navigator.storage && navigator.storage.getDirectory
+  );
+
+  addCheck('opfs', opfs ? 'good' : 'bad',
+    "The site's private storage (OPFS)");
+
+  const locks = !!(
+    navigator.locks &&
+    navigator.locks.request &&
+    navigator.locks.query
+  );
+
+  addCheck('locks', locks ? 'good' : 'bad',
+    'Safe storage between tabs (Web Locks)',
     locks ? '' : 'use a current desktop Chrome, Edge or Firefox');
+
   const memory = window.crossOriginIsolated && memoryAvailable();
-  addCheck('memory', memory ? 'good' : 'bad', 'Memory for the game (2.1 GB)',
-    memory ? '' : 'this browser could not give the game that much: a 64-bit browser on a computer has it');
-  const required = ['secure', 'isolated', 'webgl', 'opfs', 'locks', 'memory'];
+
+  addCheck('memory', memory ? 'good' : 'bad',
+    'Memory for the game (2.1 GB)',
+    memory ? '' :
+      'this browser could not give the game that much: a 64-bit browser on a computer has it');
+
+  const required = [
+    'secure',
+    'isolated',
+    'webgl',
+    'opfs',
+    'locks',
+    'memory'
+  ];
+
   return required.every((name) => results[name] === 'good');
 }
 
-// ---------- the game data (xiso-worker.js)[cite: 2]
+// ---------- game data
 
 let dataReady = false;
 let launcherStorageActive = false;
 
 function formatBytes(bytes) {
-  return bytes >= 1e9 ? (bytes / 1e9).toFixed(2) + ' GB' : Math.round(bytes / 1e6) + ' MB';
+  return bytes >= 1e9
+    ? (bytes / 1e9).toFixed(2) + ' GB'
+    : Math.round(bytes / 1e6) + ' MB';
 }
 
 async function refreshData() {
   dataReady = false;
-  let text = 'No game data yet: click the button above to download and combine the ROM.';
+
+  let text =
+    'No game data yet: the launcher will download and import it automatically.';
+
   try {
     const root = await navigator.storage.getDirectory();
     const maps = await root.getDirectoryHandle('maps');
-    const marker = await (await maps.getFileHandle('.complete')).getFile();
+
+    const marker = await (
+      await maps.getFileHandle('.complete')
+    ).getFile();
+
     const complete = JSON.parse(await marker.text());
+
     text = `${complete.files.length} files of maps (${formatBytes(complete.bytes)}), ready.`;
     dataReady = true;
+
   } catch {
     // none
   }
+
   $('data-status').textContent = text;
   $('delete-data').disabled = !dataReady;
+
   await refreshStorage();
   updatePlay();
 }
 
 async function refreshStorage() {
   if (!navigator.storage || !navigator.storage.estimate) return;
+
   const { usage, quota } = await navigator.storage.estimate();
-  const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
-  $('storage-status').textContent = `This site keeps ${formatBytes(usage || 0)} of the ${formatBytes(quota || 0)} ` +
-    `the browser allows it. ${persisted ? 'The browser keeps it.' : 'The browser may clear it when space runs low.'}`;
+
+  const persisted = navigator.storage.persisted
+    ? await navigator.storage.persisted()
+    : false;
+
+  $('storage-status').textContent =
+    `This site keeps ${formatBytes(usage || 0)} of the ${formatBytes(quota || 0)} ` +
+    `the browser allows it. ${persisted
+      ? 'The browser keeps it.'
+      : 'The browser may clear it when space runs low.'}`;
+
   $('persist').disabled = persisted;
 }
 
 async function beginStorageTask(statusId) {
-  if (mapImportWorker || launcherStorageActive || gameStarted) return null;
+  if (mapImportWorker || launcherStorageActive || gameStarted) {
+    return null;
+  }
+
   setImporting(true);
+
   try {
-    const release = await window.HaloMapStorage.lock(window.HaloMapStorage.GUARD);
+    const release =
+      await window.HaloMapStorage.lock(window.HaloMapStorage.GUARD);
+
     let held = true;
-    return async () => { if (held) { held = false; await release(); setImporting(false); updatePlay(); } };
+
+    return async () => {
+      if (held) {
+        held = false;
+        await release();
+        setImporting(false);
+        updatePlay();
+      }
+    };
+
   } catch (error) {
     $(statusId).textContent = error.message;
-    setImporting(false); updatePlay();
+    setImporting(false);
+    updatePlay();
     return null;
   }
 }
@@ -267,57 +396,92 @@ async function beginStorageTask(statusId) {
 async function importData(message) {
   const release = await beginStorageTask('import-text');
   if (!release) return;
+
   let worker;
-  try { worker = new Worker('xiso-worker.js'); }
-  catch (error) { await release(); $('import-text').textContent = error.message; return; }
+
+  try {
+    worker = new Worker('xiso-worker.js');
+  } catch (error) {
+    await release();
+    $('import-text').textContent = error.message;
+    return;
+  }
+
   $('import-progress').hidden = false;
   $('import-bar').style.width = '0';
   $('import-text').textContent = 'Reading…';
+
   setImporting(true);
-  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
+
   worker.onmessage = async (event) => {
     const data = event.data;
+
     if (data.type === 'progress') {
-      $('import-bar').style.width = (100 * data.done / data.total).toFixed(1) + '%';
-      $('import-text').textContent = `Copying ${data.file}: ${formatBytes(data.done)} of ${formatBytes(data.total)}`;
+      $('import-bar').style.width =
+        (100 * data.done / data.total).toFixed(1) + '%';
+
+      $('import-text').textContent =
+        `Copying ${data.file}: ${formatBytes(data.done)} of ${formatBytes(data.total)}`;
+
       return;
     }
+
     worker.terminate();
     await release();
+
     if (data.type === 'done') {
-      $('import-text').textContent = `Copied ${data.files} files.`;
+      $('import-text').textContent =
+        `Copied ${data.files} files.`;
+
       logLine(`import: ${data.files} files, ${data.bytes} bytes`);
+
     } else {
       $('import-text').textContent = data.message;
       logLine('import failed: ' + data.message);
     }
+
     await refreshData();
   };
+
   worker.onerror = async (event) => {
     worker.terminate();
     await release();
-    $('import-text').textContent = 'The copy failed: ' + event.message;
+
+    $('import-text').textContent =
+      'The copy failed: ' + event.message;
   };
+
   worker.postMessage(message);
 }
 
 function setImporting(importing) {
   launcherStorageActive = importing;
+
   const busy = importing || !!mapImportWorker;
   const downloadBtn = $('download-rom-btn');
+
   if (downloadBtn) {
     downloadBtn.classList.toggle('disabled', busy);
     downloadBtn.disabled = busy;
   }
+
   $('folder-input').disabled = busy;
-  for (const id of mapImportControls) $(id).disabled = busy;
+
+  for (const id of mapImportControls) {
+    $(id).disabled = busy;
+  }
+
   $('mod-label').classList.toggle('disabled', busy);
   $('mod-input').disabled = busy;
   $('delete-data').disabled = busy || !dataReady;
   $('play').disabled = busy || !canPlay();
 }
 
-// ---------- Parallel ROM Downloader & Combiner
+// ---------- automatic parallel ROM downloader
 
 async function downloadAndCombineROM() {
   const release = await beginStorageTask('import-text');
@@ -325,7 +489,9 @@ async function downloadAndCombineROM() {
 
   $('import-progress').hidden = false;
   $('import-bar').style.width = '0';
-  $('import-text').textContent = 'Connecting and preparing parallel download...';
+  $('import-text').textContent =
+    'Connecting and preparing automatic download...';
+
   setImporting(true);
 
   if (navigator.storage && navigator.storage.persist) {
@@ -333,264 +499,559 @@ async function downloadAndCombineROM() {
   }
 
   const totalParts = 120;
-  const baseUrl = 'https://raw.githubusercontent.com/AMoldyWaffle/HaloCEROM/main/Halo%20-%20Combat%20Evolved%20(USA)%20(Rev%201).xiso_part_';
+
+  const baseUrl =
+    'https://raw.githubusercontent.com/AMoldyWaffle/HaloCEROM/main/Halo%20-%20Combat%20Evolved%20(USA)%20(Rev%201).xiso_part_';
+
   const chunks = new Array(totalParts);
+
   let completedCount = 0;
   let totalBytesLoaded = 0;
 
-  // Maximum concurrent downloads to avoid overwhelming browser sockets
-  const concurrencyLimit = 8;
+  // Concurrent downloads.
+  const concurrencyLimit = 16;
+  const maxAttempts = 4;
 
   try {
+
     async function fetchPart(i) {
       const partNum = String(i).padStart(3, '0');
       const url = `${baseUrl}${partNum}.iso`;
 
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch part ${partNum} (HTTP ${response.status})`);
+      let lastError;
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const response = await fetch(url, {
+            cache: 'force-cache'
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const buffer = await response.arrayBuffer();
+
+          if (!buffer.byteLength) {
+            throw new Error('The server returned an empty part.');
+          }
+
+          chunks[i - 1] = buffer;
+
+          completedCount++;
+          totalBytesLoaded += buffer.byteLength;
+
+          const percent =
+            (completedCount / totalParts) * 100;
+
+          $('import-bar').style.width =
+            percent.toFixed(1) + '%';
+
+          $('import-text').textContent =
+            `Downloading automatically: ${completedCount}/${totalParts} parts (${formatBytes(totalBytesLoaded)})`;
+
+          return;
+
+        } catch (error) {
+          lastError = error;
+
+          if (attempt < maxAttempts) {
+            await new Promise(resolve =>
+              setTimeout(resolve, 350 * attempt)
+            );
+          }
+        }
       }
 
-      const buffer = await response.arrayBuffer();
-      chunks[i - 1] = buffer;
-      completedCount++;
-      totalBytesLoaded += buffer.byteLength;
-
-      const percent = (completedCount / totalParts) * 100;
-      $('import-bar').style.width = percent.toFixed(1) + '%';
-      $('import-text').textContent = `Downloaded ${completedCount} of ${totalParts} parts (${formatBytes(totalBytesLoaded)})`;
+      throw new Error(
+        `Part ${partNum} failed after ${maxAttempts} attempts: ${lastError.message}`
+      );
     }
 
-    // Run queue in batches of concurrencyLimit
+    // Shared queue: keep all download slots occupied.
+
     let currentIndex = 0;
+
     async function workerPool() {
-      while (currentIndex < totalParts) {
+      while (true) {
         const currentTask = currentIndex++;
-        if (currentTask < totalParts) {
-          await fetchPart(currentTask + 1);
+
+        if (currentTask >= totalParts) return;
+
+        await fetchPart(currentTask + 1);
+      }
+    }
+
+    const workers = Array.from(
+      { length: Math.min(concurrencyLimit, totalParts) },
+      () => workerPool()
+    );
+
+    await Promise.all(workers);
+
+    // Combine all downloaded parts.
+
+    $('import-text').textContent =
+      'All parts downloaded! Combining disc image...';
+
+    const combinedBlob = new Blob(chunks, {
+      type: 'application/octet-stream'
+    });
+
+    const file = new File(
+      [combinedBlob],
+      'Halo - Combat Evolved (USA) (Rev 1).iso',
+      { type: 'application/octet-stream' }
+    );
+
+    await release();
+
+    // Import directly into browser storage.
+
+    await importData({
+      type: 'image',
+      file
+    });
+
+  } catch (error) {
+    await release();
+
+    $('import-text').textContent =
+      'Download failed: ' + error.message;
+
+    logLine('rom download failed: ' + error.message);
+
+    setImporting(false);
+  }
+}
+
+$('download-rom-btn').addEventListener(
+  'click',
+  downloadAndCombineROM
+);
+// ---------- custom CE and MCC maps
+
+let mapImportWorker = null;
+
+const mapImportControls = [
+  'ce-files-input',
+  'ce-folder-input',
+  'mcc-folder-input',
+  'mcc-package-name'
+];
+
+async function refreshCustomMaps() {
+  const counts = { ce: 0, mcc: 0 };
+
+  try {
+    const root = await navigator.storage.getDirectory();
+
+    for (const [kind, folder] of [
+      ['ce', 'custom_maps'],
+      ['mcc', 'mcc_maps']
+    ]) {
+      let dir;
+
+      try {
+        dir = await root.getDirectoryHandle(folder);
+      } catch (error) {
+        if (error.name === 'NotFoundError') continue;
+        throw error;
+      }
+
+      let scanned = 0;
+
+      for await (const [name, handle] of dir.entries()) {
+        if (++scanned > 4096) {
+          throw new Error('Too many stored map entries to list.');
+        }
+
+        if (
+          kind === 'ce' &&
+          handle.kind === 'file' &&
+          /\.map$/i.test(name) &&
+          !/^(bitmaps|sounds|loc)\.map$/i.test(name)
+        ) {
+          counts.ce++;
+        }
+
+        if (
+          kind === 'mcc' &&
+          handle.kind === 'directory' &&
+          name !== '_shared' &&
+          (await window.HaloMapStorage.dispatch(
+            'visible',
+            { folder: name }
+          )).visible
+        ) {
+          counts.mcc++;
         }
       }
     }
 
-    const workers = [];
-    for (let w = 0; w < Math.min(concurrencyLimit, totalParts); w++) {
-      workers.push(workerPool());
-    }
-
-    await Promise.all(workers);
-
-    $('import-text').textContent = 'Combining parts into disc image...';
-    const combinedBlob = new Blob(chunks, { type: 'application/octet-stream' });
-    const file = new File([combinedBlob], 'Halo - Combat Evolved (USA) (Rev 1).iso', { type: 'application/octet-stream' });
-
-    await release();
-    await importData({ type: 'image', file });
+    $('custom-maps-list').textContent =
+      `${counts.ce} CE maps and ${counts.mcc} MCC packages in this browser.`;
 
   } catch (error) {
-    await release();
-    $('import-text').textContent = 'Download failed: ' + error.message;
-    logLine('rom download failed: ' + error.message);
-    setImporting(false);
+    $('custom-maps-list').textContent =
+      'Could not list custom maps: ' + error.message;
   }
-}
-
-$('download-rom-btn').addEventListener('click', downloadAndCombineROM);
-
-// CE and MCC imports[cite: 2]
-let mapImportWorker = null;
-const mapImportControls = ['ce-files-input', 'ce-folder-input', 'mcc-folder-input', 'mcc-package-name'];
-
-async function refreshCustomMaps() {
-  const counts = { ce: 0, mcc: 0 };
-  try {
-    const root = await navigator.storage.getDirectory();
-    for (const [kind, folder] of [['ce', 'custom_maps'], ['mcc', 'mcc_maps']]) {
-      let dir;
-      try { dir = await root.getDirectoryHandle(folder); }
-      catch (error) { if (error.name === 'NotFoundError') continue; throw error; }
-      let scanned = 0;
-      for await (const [name, handle] of dir.entries()) {
-        if (++scanned > 4096) throw new Error('Too many stored map entries to list.');
-        if (kind === 'ce' && handle.kind === 'file' && /\.map$/i.test(name) && !/^(bitmaps|sounds|loc)\.map$/i.test(name)) counts.ce++;
-        if (kind === 'mcc' && handle.kind === 'directory' && name !== '_shared' &&
-            (await window.HaloMapStorage.dispatch('visible', { folder: name })).visible) counts.mcc++;
-      }
-    }
-    $('custom-maps-list').textContent = `${counts.ce} CE maps and ${counts.mcc} MCC packages in this browser.`;
-  } catch (error) { $('custom-maps-list').textContent = 'Could not list custom maps: ' + error.message; }
 }
 
 function mapImport(family, selected) {
-  if (mapImportWorker || launcherStorageActive || gameStarted || !selected.length) return;
-  const worker = new Worker(family === 'ce' ? 'ce-import-worker.js' : 'mcc-import-worker.js');
+  if (
+    mapImportWorker ||
+    launcherStorageActive ||
+    gameStarted ||
+    !selected.length
+  ) {
+    return;
+  }
+
+  const worker = new Worker(
+    family === 'ce'
+      ? 'ce-import-worker.js'
+      : 'mcc-import-worker.js'
+  );
+
   mapImportWorker = worker;
+
   setImporting(false);
+
   $('map-import-cancel').hidden = false;
   $('map-import-cancel').disabled = false;
-  $('map-import-status').textContent = 'Checking the selected files…';
+
+  $('map-import-status').textContent =
+    'Checking the selected files…';
+
   updatePlay();
-  if (navigator.storage.persist) navigator.storage.persist().catch(() => {});
+
+  if (navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
+
   async function finished(message) {
     if (mapImportWorker !== worker) return;
-    worker.terminate(); mapImportWorker = null;
+
+    worker.terminate();
+    mapImportWorker = null;
+
     setImporting(false);
+
     $('map-import-cancel').hidden = true;
     $('map-import-status').textContent = message;
-    await refreshCustomMaps(); await refreshStorage(); updatePlay();
+
+    await refreshCustomMaps();
+    await refreshStorage();
+    updatePlay();
   }
+
   worker.onmessage = event => {
     const data = event.data;
+
     if (data.type === 'progress') {
-      $('map-import-status').textContent = `Copying ${data.file}: ${formatBytes(data.done)} of ${formatBytes(data.total)}`;
+      $('map-import-status').textContent =
+        `Copying ${data.file}: ${formatBytes(data.done)} of ${formatBytes(data.total)}`;
+
     } else if (data.type === 'done') {
-      finished(`Imported ${data.title}: ${data.files} files (${formatBytes(data.bytes)}).`);
-    } else if (data.type === 'error') finished(data.message);
+      finished(
+        `Imported ${data.title}: ${data.files} files (${formatBytes(data.bytes)}).`
+      );
+
+    } else if (data.type === 'error') {
+      finished(data.message);
+    }
   };
-  worker.onerror = event => finished('Import stopped: ' + event.message + '. Storage recovery will run before the next game.');
-  worker.postMessage({ type: 'import', files: selected, options: { name: $('mcc-package-name').value } });
+
+  worker.onerror = event => {
+    finished(
+      'Import stopped: ' + event.message +
+      '. Storage recovery will run before the next game.'
+    );
+  };
+
+  worker.postMessage({
+    type: 'import',
+    files: selected,
+    options: {
+      name: $('mcc-package-name').value
+    }
+  });
 }
 
-for (const [id, family] of [['ce-files-input', 'ce'], ['ce-folder-input', 'ce'], ['mcc-folder-input', 'mcc']]) {
+for (const [id, family] of [
+  ['ce-files-input', 'ce'],
+  ['ce-folder-input', 'ce'],
+  ['mcc-folder-input', 'mcc']
+]) {
   $(id).addEventListener('change', event => {
-    const selected = [...event.target.files]; event.target.value = '';
+    const selected = [...event.target.files];
+    event.target.value = '';
     mapImport(family, selected);
   });
 }
+
 $('map-import-cancel').addEventListener('click', () => {
   if (!mapImportWorker) return;
+
   $('map-import-cancel').disabled = true;
-  $('map-import-status').textContent = 'Cancelling and removing the unfinished import…';
+
+  $('map-import-status').textContent =
+    'Cancelling and removing the unfinished import…';
+
   mapImportWorker.postMessage({ type: 'cancel' });
 });
 
-// ---------- mods (mods-worker.js)[cite: 2]
+// ---------- mods
 
 async function modName(directory, folder) {
   try {
-    const text = await (await (await directory.getFileHandle('mod.toml')).getFile()).text();
+    const text = await (
+      await (await directory.getFileHandle('mod.toml')).getFile()
+    ).text();
+
     const match = /^\s*name\s*=\s*"([^"\n]*)"/m.exec(text);
-    if (match && match[1].trim()) return match[1].trim();
+
+    if (match && match[1].trim()) {
+      return match[1].trim();
+    }
+
   } catch {
     // none
   }
+
   return folder;
 }
 
 async function refreshMods() {
   const list = $('mods-list');
   const found = [];
+
   try {
     const root = await navigator.storage.getDirectory();
     const mods = await root.getDirectoryHandle('mods');
+
     for await (const [folder, handle] of mods.entries()) {
-      if (handle.kind === 'directory') found.push({ folder, name: await modName(handle, folder) });
+      if (handle.kind === 'directory') {
+        found.push({
+          folder,
+          name: await modName(handle, folder)
+        });
+      }
     }
+
   } catch {
     // no mods folder yet
   }
-  const key = (folder) => folder.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
-  found.sort((first, second) => (key(first.folder) < key(second.folder) ? -1 : 1));
-  list.replaceChildren(...found.map(({ folder, name }) => {
-    const item = document.createElement('li');
-    const label = document.createElement('span');
-    const detail = document.createElement('span');
-    const remove = document.createElement('button');
-    label.textContent = name;
-    detail.className = 'detail';
-    detail.textContent = ` ${folder}`;
-    label.append(detail);
-    remove.textContent = 'Remove';
-    remove.className = 'danger';
-    remove.addEventListener('click', () => {
-      if (confirm(`Remove the mod ${name} from this browser?`)) modTask({ type: 'remove', name: folder });
-    });
-    item.append(label, remove);
-    return item;
-  }));
-  $('mods-status').textContent = found.length ? `${found.length} mod${found.length === 1 ? '' : 's'} in this browser.` :
-    'No mods yet.';
-  summarize('summary-mods', null, found.length ? `${found.length} mod${found.length === 1 ? '' : 's'}` : 'None yet');
+
+  const key = (folder) =>
+    folder.replace(/[A-Z]/g, letter => letter.toLowerCase());
+
+  found.sort((first, second) =>
+    key(first.folder) < key(second.folder) ? -1 : 1
+  );
+
+  list.replaceChildren(
+    ...found.map(({ folder, name }) => {
+      const item = document.createElement('li');
+      const label = document.createElement('span');
+      const detail = document.createElement('span');
+      const remove = document.createElement('button');
+
+      label.textContent = name;
+
+      detail.className = 'detail';
+      detail.textContent = ` ${folder}`;
+
+      label.append(detail);
+
+      remove.textContent = 'Remove';
+      remove.className = 'danger';
+
+      remove.addEventListener('click', () => {
+        if (confirm(`Remove the mod ${name} from this browser?`)) {
+          modTask({
+            type: 'remove',
+            name: folder
+          });
+        }
+      });
+
+      item.append(label, remove);
+
+      return item;
+    })
+  );
+
+  $('mods-status').textContent = found.length
+    ? `${found.length} mod${found.length === 1 ? '' : 's'} in this browser.`
+    : 'No mods yet.';
+
+  summarize(
+    'summary-mods',
+    null,
+    found.length
+      ? `${found.length} mod${found.length === 1 ? '' : 's'}`
+      : 'None yet'
+  );
+
   await refreshStorage();
 }
 
 async function modTask(message) {
   const release = await beginStorageTask('mods-status');
+
   if (!release) return;
+
   let worker;
-  try { worker = new Worker('mods-worker.js'); }
-  catch (error) { await release(); $('mods-status').textContent = error.message; return; }
+
+  try {
+    worker = new Worker('mods-worker.js');
+  } catch (error) {
+    await release();
+    $('mods-status').textContent = error.message;
+    return;
+  }
+
   $('mod-label').classList.add('disabled');
   $('mod-input').disabled = true;
+
   worker.onmessage = async (event) => {
     const data = event.data;
+
     if (data.type === 'progress') {
-      $('mods-status').textContent = `Copying ${data.file}: ${formatBytes(data.done)} of ${formatBytes(data.total)}`;
+      $('mods-status').textContent =
+        `Copying ${data.file}: ${formatBytes(data.done)} of ${formatBytes(data.total)}`;
+
       return;
     }
+
     worker.terminate();
     await release();
+
     $('mod-label').classList.remove('disabled');
     $('mod-input').disabled = false;
+
     await refreshMods();
-    if (data.type === 'error') $('mods-status').textContent = data.message;
-    else if (message.type === 'add') logLine(`mods: ${data.name}, ${data.files} files, ${data.bytes} bytes`);
+
+    if (data.type === 'error') {
+      $('mods-status').textContent = data.message;
+
+    } else if (message.type === 'add') {
+      logLine(
+        `mods: ${data.name}, ${data.files} files, ${data.bytes} bytes`
+      );
+    }
   };
+
   worker.onerror = async (event) => {
     worker.terminate();
     await release();
+
     $('mod-label').classList.remove('disabled');
     $('mod-input').disabled = false;
+
     await refreshMods();
-    $('mods-status').textContent = 'The copy failed: ' + event.message;
+
+    $('mods-status').textContent =
+      'The copy failed: ' + event.message;
   };
+
   worker.postMessage(message);
 }
 
 $('mod-input').addEventListener('change', (event) => {
   const files = [...event.target.files];
+
   event.target.value = '';
-  if (files.length) modTask({ type: 'add', files });
+
+  if (files.length) {
+    modTask({
+      type: 'add',
+      files
+    });
+  }
 });
 
+// ---------- delete game data
+
 $('delete-data').addEventListener('click', async () => {
-  if (!confirm('Delete the maps copied into this browser? Saved games stay.')) return;
+  if (!confirm(
+    'Delete the maps copied into this browser? Saved games stay.'
+  )) {
+    return;
+  }
+
   const release = await beginStorageTask('data-status');
+
   if (!release) return;
+
   try {
     const root = await navigator.storage.getDirectory();
-    await root.removeEntry('maps', { recursive: true }).catch(() => {});
+
+    await root.removeEntry('maps', {
+      recursive: true
+    }).catch(() => {});
+
     try {
-      const drive = await (await root.getDirectoryHandle('save')).getDirectoryHandle('z');
+      const drive = await (
+        await root.getDirectoryHandle('save')
+      ).getDirectoryHandle('z');
+
       for await (const [name] of drive.entries()) {
-        if (/^cache\d+\.map$/i.test(name)) await drive.removeEntry(name).catch(() => {});
+        if (/^cache\d+\.map$/i.test(name)) {
+          await drive.removeEntry(name).catch(() => {});
+        }
       }
+
     } catch {
       // no saved games yet
     }
+
     await refreshData();
-  } finally { await release(); }
+
+  } finally {
+    await release();
+  }
 });
 
 $('persist').addEventListener('click', async () => {
-  if (navigator.storage && navigator.storage.persist) await navigator.storage.persist();
+  if (navigator.storage && navigator.storage.persist) {
+    await navigator.storage.persist();
+  }
+
   await refreshStorage();
 });
 
-// ---------- saved games out, as a zip[cite: 2]
+// ---------- saved games ZIP export
 
 const crcTable = (() => {
   const table = new Uint32Array(256);
+
   for (let n = 0; n < 256; n++) {
     let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+
+    for (let k = 0; k < 8; k++) {
+      c = c & 1
+        ? 0xEDB88320 ^ (c >>> 1)
+        : c >>> 1;
+    }
+
     table[n] = c >>> 0;
   }
+
   return table;
 })();
 
 function crc32(bytes) {
   let crc = 0xFFFFFFFF;
-  for (let i = 0; i < bytes.length; i++) crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+
+  for (let i = 0; i < bytes.length; i++) {
+    crc =
+      crcTable[(crc ^ bytes[i]) & 0xFF] ^
+      (crc >>> 8);
+  }
+
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
@@ -598,11 +1059,15 @@ function zip(entries) {
   const encoder = new TextEncoder();
   const parts = [];
   const central = [];
+
   let offset = 0;
+
   for (const { name, data } of entries) {
     const nameBytes = encoder.encode(name);
     const crc = crc32(data);
+
     const local = new DataView(new ArrayBuffer(30));
+
     local.setUint32(0, 0x04034b50, true);
     local.setUint16(4, 20, true);
     local.setUint16(6, 0x0800, true);
@@ -610,7 +1075,9 @@ function zip(entries) {
     local.setUint32(18, data.length, true);
     local.setUint32(22, data.length, true);
     local.setUint16(26, nameBytes.length, true);
+
     const header = new DataView(new ArrayBuffer(46));
+
     header.setUint32(0, 0x02014b50, true);
     header.setUint16(4, 20, true);
     header.setUint16(6, 20, true);
@@ -620,25 +1087,52 @@ function zip(entries) {
     header.setUint32(24, data.length, true);
     header.setUint16(28, nameBytes.length, true);
     header.setUint32(42, offset, true);
+
     parts.push(local.buffer, nameBytes, data);
     central.push(header.buffer, nameBytes);
+
     offset += 30 + nameBytes.length + data.length;
   }
-  const centralSize = central.reduce((sum, part) => sum + part.byteLength, 0);
+
+  const centralSize = central.reduce(
+    (sum, part) => sum + part.byteLength,
+    0
+  );
+
   const end = new DataView(new ArrayBuffer(22));
+
   end.setUint32(0, 0x06054b50, true);
   end.setUint16(8, entries.length, true);
   end.setUint16(10, entries.length, true);
   end.setUint32(12, centralSize, true);
   end.setUint32(16, offset, true);
-  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+
+  return new Blob(
+    [...parts, ...central, end.buffer],
+    { type: 'application/zip' }
+  );
 }
 
 async function collect(directory, prefix, entries) {
   for await (const [name, handle] of directory.entries()) {
-    if (/^cache\d+\.map$/i.test(name) || (prefix === 'save/z/' && name === 'maps')) continue;
-    if (handle.kind === 'directory') await collect(handle, prefix + name + '/', entries);
-    else entries.push({ name: prefix + name, data: new Uint8Array(await (await handle.getFile()).arrayBuffer()) });
+    if (
+      /^cache\d+\.map$/i.test(name) ||
+      (prefix === 'save/z/' && name === 'maps')
+    ) {
+      continue;
+    }
+
+    if (handle.kind === 'directory') {
+      await collect(handle, prefix + name + '/', entries);
+
+    } else {
+      entries.push({
+        name: prefix + name,
+        data: new Uint8Array(
+          await (await handle.getFile()).arrayBuffer()
+        )
+      });
+    }
   }
 }
 
@@ -647,27 +1141,41 @@ $('export-saves').addEventListener('click', async () => {
     alert('Quit the game first: its files are open while it runs.');
     return;
   }
+
   const entries = [];
   const root = await navigator.storage.getDirectory();
+
   try {
-    await collect(await root.getDirectoryHandle('save'), 'save/', entries);
+    await collect(
+      await root.getDirectoryHandle('save'),
+      'save/',
+      entries
+    );
   } catch {
     // no saved games yet
   }
+
   const config = await readStorageText('config.toml');
-  if (config != null) entries.push({ name: 'config.toml', data: new TextEncoder().encode(config) });
+
+  if (config != null) {
+    entries.push({
+      name: 'config.toml',
+      data: new TextEncoder().encode(config)
+    });
+  }
+
   if (!entries.length) {
     alert('There are no saved games yet.');
     return;
   }
+
   download('opence-saves.zip', zip(entries));
 });
 
 $('download-log').addEventListener('click', downloadLog);
 $('fatal-log-download').addEventListener('click', downloadLog);
 $('fatal-reload').addEventListener('click', () => location.reload());
-
-// ---------- the game
+// ---------- game
 
 let checksPassed = false;
 let gameStarted = false;
@@ -675,7 +1183,11 @@ let gameStopped = false;
 let wakeLock = null;
 
 function canPlay() {
-  return checksPassed && dataReady && !gameStarted && !mapImportWorker && !launcherStorageActive;
+  return checksPassed &&
+    dataReady &&
+    !gameStarted &&
+    !mapImportWorker &&
+    !launcherStorageActive;
 }
 
 function summarize(id, good, text) {
@@ -686,46 +1198,77 @@ function summarize(id, good, text) {
 
 function updatePlay() {
   $('play').disabled = !canPlay();
-  $('play-note').textContent = !checksPassed ? 'This browser cannot run the game: see This browser, below.' :
-    !dataReady ? 'The game data is needed first.' : '';
-  summarize('summary-browser', checksPassed, checksPassed ? 'Runs the game' : 'Cannot run the game');
-  summarize('summary-data', dataReady, dataReady ? $('data-status').textContent : 'Needed first');
+
+  $('play-note').textContent =
+    !checksPassed
+      ? 'This browser cannot run the game: see This browser, below.'
+      : !dataReady
+        ? 'The game data is needed first.'
+        : '';
+
+  summarize(
+    'summary-browser',
+    checksPassed,
+    checksPassed ? 'Runs the game' : 'Cannot run the game'
+  );
+
+  summarize(
+    'summary-data',
+    dataReady,
+    dataReady ? $('data-status').textContent : 'Needed first'
+  );
 }
 
 const INIT_MARKER = 'opence-page-wrote-init';
 
 async function prepareInit() {
   const root = await navigator.storage.getDirectory();
+
   let wrote = false;
+
   try {
     wrote = localStorage.getItem(INIT_MARKER) === '1';
   } catch {
     // no localStorage
   }
+
   if (params.has('map')) {
     const name = params.get('map');
-    const level = name.includes('\\') ? name : `levels\\${name}\\${name}`;
+
+    const level = name.includes('\\')
+      ? name
+      : `levels\\${name}\\${name}`;
+
     if (!/^[A-Za-z0-9_\\]+$/.test(level)) return;
-    const handle = await root.getFileHandle('init.txt', { create: true });
+
+    const handle = await root.getFileHandle(
+      'init.txt',
+      { create: true }
+    );
+
     const writable = await handle.createWritable();
+
     await writable.write(`map_name ${level}\r\n`);
     await writable.close();
+
     try {
       localStorage.setItem(INIT_MARKER, '1');
     } catch {
-      // as above
+      // no localStorage
     }
+
   } else if (wrote) {
     await root.removeEntry('init.txt').catch(() => {});
+
     try {
       localStorage.removeItem(INIT_MARKER);
     } catch {
-      // as above
+      // no localStorage
     }
   }
 }
 
-// ---------- rooms (net.js)[cite: 2]
+// ---------- multiplayer rooms
 
 function roomLink(secret) {
   return `${location.origin}${location.pathname}?room=${secret}`;
@@ -733,295 +1276,582 @@ function roomLink(secret) {
 
 function showRoom(status) {
   const inRoom = !!status;
+
   $('room-create').hidden = inRoom || gameStarted;
   $('room-copy').hidden = !inRoom;
   $('room-leave').hidden = !inRoom || gameStarted;
+
   if (!inRoom) return;
-  const brokers = status.brokers ? '' : ' (finding the message brokers…)';
-  $('room-status').textContent = status.peers ?
-    `In a room with ${status.connected} of ${status.peers} other browsers connected${brokers}. Your address: ${status.address}.` :
-    `In a room, alone so far${brokers}: send its link to your friends.`;
+
+  const brokers = status.brokers
+    ? ''
+    : ' (finding the message brokers…)';
+
+  $('room-status').textContent = status.peers
+    ? `In a room with ${status.connected} of ${status.peers} other browsers connected${brokers}. Your address: ${status.address}.`
+    : `In a room, alone so far${brokers}: send its link to your friends.`;
 }
 
 async function joinRoom(secret) {
-  const brokers = (params.get('brokers') || '').split(',').filter((url) => /^wss?:\/\//.test(url));
+  const brokers = (params.get('brokers') || '')
+    .split(',')
+    .filter(url => /^wss?:\/\//.test(url));
+
   showRoom(await window.HaloNet.join(secret, brokers));
-  history.replaceState(null, '', `?${new URLSearchParams({ ...Object.fromEntries(params), room: secret })}`);
+
+  history.replaceState(
+    null,
+    '',
+    `?${new URLSearchParams({
+      ...Object.fromEntries(params),
+      room: secret
+    })}`
+  );
 }
 
 window.HaloNet.onChange(showRoom);
 
-$('room-create').addEventListener('click', () => joinRoom(window.HaloNet.newSecret()));
+$('room-create').addEventListener('click', () => {
+  joinRoom(window.HaloNet.newSecret());
+});
+
 $('room-copy').addEventListener('click', async () => {
   const status = window.HaloNet.status();
+
   if (!status) return;
+
   try {
-    await navigator.clipboard.writeText(roomLink(status.secret));
+    await navigator.clipboard.writeText(
+      roomLink(status.secret)
+    );
+
     $('room-copy').textContent = 'Copied';
-    setTimeout(() => { $('room-copy').textContent = "Copy the room's link"; }, 1500);
+
+    setTimeout(() => {
+      $('room-copy').textContent = "Copy the room's link";
+    }, 1500);
+
   } catch {
-    prompt("The room's link:", roomLink(status.secret));
+    prompt(
+      "The room's link:",
+      roomLink(status.secret)
+    );
   }
 });
+
 $('room-leave').addEventListener('click', () => {
   window.HaloNet.leave();
+
   params.delete('room');
-  history.replaceState(null, '', params.toString() ? `?${params}` : location.pathname);
+
+  history.replaceState(
+    null,
+    '',
+    params.toString()
+      ? `?${params}`
+      : location.pathname
+  );
 });
+
+// ---------- game arguments
 
 function gameArguments() {
   const args = [];
-  if (window.HaloNet.address()) args.push('--HALO_WEB_ADDRESS=' + window.HaloNet.address());
-  for (const value of params.getAll('set')) {
-    if (/^[A-Z0-9_]+=/.test(value)) args.push('--' + value);
+
+  if (window.HaloNet.address()) {
+    args.push(
+      '--HALO_WEB_ADDRESS=' + window.HaloNet.address()
+    );
   }
-  if (params.has('menu')) args.push('--HALO_MENU_OPEN=' + params.get('menu'));
-  const brokers = (params.get('brokers') || '').split(',').filter((url) => /^wss?:\/\/[^,\s]+$/.test(url));
-  if (brokers.length) args.push('--HALO_WEB_BROKERS=' + brokers.join(','));
-  const invite = /([0-9a-f]{64})\s*$/i.exec(params.get('join') || '');
-  if (invite) args.push('halo://join/' + invite[1].toLowerCase());
+
+  for (const value of params.getAll('set')) {
+    if (/^[A-Z0-9_]+=/.test(value)) {
+      args.push('--' + value);
+    }
+  }
+
+  if (params.has('menu')) {
+    args.push('--HALO_MENU_OPEN=' + params.get('menu'));
+  }
+
+  const brokers = (params.get('brokers') || '')
+    .split(',')
+    .filter(url => /^wss?:\/\/[^,\s]+$/.test(url));
+
+  if (brokers.length) {
+    args.push('--HALO_WEB_BROKERS=' + brokers.join(','));
+  }
+
+  const invite = /([0-9a-f]{64})\s*$/i.exec(
+    params.get('join') || ''
+  );
+
+  if (invite) {
+    args.push('halo://join/' + invite[1].toLowerCase());
+  }
+
   return args;
 }
 
+// ---------- fatal errors
+
 function showFatal(text) {
   gameStopped = true;
+
   $('fatal-text').textContent = text;
   $('fatal-log').textContent = log.slice(-60).join('\n');
   $('fatal').hidden = false;
-  if (document.exitPointerLock) document.exitPointerLock();
+
+  if (document.exitPointerLock) {
+    document.exitPointerLock();
+  }
 }
 
 function showInvite(text) {
   const code = /([0-9a-f]{64})/.exec(text);
+
   if (!code) return;
-  $('invite-link').value = `${location.origin}${location.pathname}?join=${code[1]}`;
+
+  $('invite-link').value =
+    `${location.origin}${location.pathname}?join=${code[1]}`;
+
   $('invite-copy').textContent = 'Copy';
   $('invite').hidden = false;
 }
 
 function showLinkPage(url) {
   if (!/^https?:\/\/[^\s]+\/link\?/.test(url)) return;
+
   $('ask-title').textContent = 'Link Discord';
-  $('ask-text').textContent = 'The master server\'s page links your Discord account to this game. '
-    + 'Check that it shows the code Settings > Network Setup > Discord Account shows.';
+
+  $('ask-text').textContent =
+    'The master server\'s page links your Discord account to this game. ' +
+    'Check that it shows the code Settings > Network Setup > Discord Account shows.';
+
   const open = document.createElement('button');
+
   open.textContent = 'Open the page';
   open.className = 'primary';
+
   open.addEventListener('click', () => {
     $('ask').hidden = true;
     window.open(url, '_blank', 'noopener');
   });
+
   const close = document.createElement('button');
+
   close.textContent = 'Close';
-  close.addEventListener('click', () => { $('ask').hidden = true; });
+
+  close.addEventListener('click', () => {
+    $('ask').hidden = true;
+  });
+
   $('ask-buttons').replaceChildren(open, close);
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+
   $('ask').hidden = false;
 }
 
 $('invite-copy').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText($('invite-link').value);
+    await navigator.clipboard.writeText(
+      $('invite-link').value
+    );
+
     $('invite-copy').textContent = 'Copied';
+
   } catch {
     $('invite-link').select();
   }
 });
-$('invite-close').addEventListener('click', () => { $('invite').hidden = true; });
+
+$('invite-close').addEventListener('click', () => {
+  $('invite').hidden = true;
+});
+
+// ---------- server joining
 
 function joinServer(code) {
-  if (!/^[0-9a-f]{64}$/.test(code) || gameStarted) return;
+  if (!/^[0-9a-f]{64}$/.test(code) || gameStarted) {
+    return;
+  }
+
   params.set('join', code);
+
   history.replaceState(null, '', `?${params}`);
+
   if (canPlay()) {
     play();
     return;
   }
+
   location.hash = '#play-panel';
+
   updatePlay();
-  $('play-note').textContent += ' Play then joins the server you chose.';
+
+  $('play-note').textContent +=
+    ' Play then joins the server you chose.';
 }
+
+// ---------- script loading
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
+
     script.src = src;
     script.onload = resolve;
-    script.onerror = () => reject(new Error('could not load ' + src));
+
+    script.onerror = () => {
+      reject(new Error('could not load ' + src));
+    };
+
     document.head.append(script);
   });
 }
 
+// ---------- start game
+
 async function play() {
   if (!canPlay()) return;
+
   gameStarted = true;
+
   try {
     await window.HaloMapStorage.startGame();
+
   } catch (error) {
     gameStarted = false;
     updatePlay();
+
     $('play-note').textContent = error.message;
     return;
   }
+
   watchFrames();
+
   $('launcher').hidden = true;
   $('update').hidden = true;
   $('game').hidden = false;
+
   const canvas = $('canvas');
+
   canvas.focus();
+
   try {
-    if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen');
+    if (navigator.wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
   } catch {
     // phone dim
   }
+
   try {
     await prepareInit();
+
     await loadScript('halo.js');
+
     const options = {
       canvas,
+
       arguments: gameArguments(),
-      print: (text) => { logLine(text); console.log(text); },
+
+      print: (text) => {
+        logLine(text);
+        console.log(text);
+      },
+
       printErr: (text) => {
         logLine(text);
         console.warn(text);
-        if (!$('starting').hidden && /data root:/.test(text)) $('starting-text').textContent = 'Loading the menus…';
+
+        if (
+          !$('starting').hidden &&
+          /data root:/.test(text)
+        ) {
+          $('starting-text').textContent =
+            'Loading the menus…';
+        }
       },
-      haloNetSend: (address, reliable, bytes) => window.HaloNet.send(address, reliable, bytes),
-      haloP2P: (command, connection, bytes) => window.HaloP2P.command(command, connection, bytes),
-      haloMccStorage: (action, payload) => window.HaloMapStorage.dispatch(action, payload),
+
+      haloNetSend: (address, reliable, bytes) =>
+        window.HaloNet.send(address, reliable, bytes),
+
+      haloP2P: (command, connection, bytes) =>
+        window.HaloP2P.command(command, connection, bytes),
+
+      haloMccStorage: (action, payload) =>
+        window.HaloMapStorage.dispatch(action, payload),
+
       haloMessage: (kind, text) => {
         logLine(text);
+
         if (kind === 2) showInvite(text);
         if (kind === 3) showFatal(text);
         if (kind === 4) location.reload();
         if (kind === 5) showLinkPage(text);
       },
+
       haloAsk: (title, text, labels, answer) => {
         logLine(`${title}: ${text}`);
+
         $('ask-title').textContent = title;
         $('ask-text').textContent = text;
-        $('ask-buttons').replaceChildren(...labels.map((label, index) => {
-          const button = document.createElement('button');
-          button.textContent = label;
-          if (index === 0) button.className = 'primary';
-          button.addEventListener('click', () => {
-            $('ask').hidden = true;
-            answer(index);
-          });
-          return button;
-        }));
-        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+
+        $('ask-buttons').replaceChildren(
+          ...labels.map((label, index) => {
+            const button = document.createElement('button');
+
+            button.textContent = label;
+
+            if (index === 0) {
+              button.className = 'primary';
+            }
+
+            button.addEventListener('click', () => {
+              $('ask').hidden = true;
+              answer(index);
+            });
+
+            return button;
+          })
+        );
+
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+
         $('ask').hidden = false;
       },
-      onAbort: (what) => showFatal('The game stopped: ' + what),
-      onExit: (status) => {
-        if (status) showFatal(`The game stopped (status ${status}). The log below says why.`);
-        else location.reload();
+
+      onAbort: (what) => {
+        showFatal('The game stopped: ' + what);
       },
+
+      onExit: (status) => {
+        if (status) {
+          showFatal(
+            `The game stopped (status ${status}). The log below says why.`
+          );
+        } else {
+          location.reload();
+        }
+      }
     };
+
     window.HaloP2P.attach(options);
+
     game = await window.createHalo(options);
+
     window.HaloTouch.start(game, $('touch'));
     window.HaloNet.attach(game);
+
   } catch (error) {
-    showFatal(String(error && error.message ? error.message : error));
+    showFatal(
+      String(error && error.message ? error.message : error)
+    );
   }
 }
+
+// ---------- mouse handling
 
 const MOUSE_WANTED_WORD = 48;
 
 $('canvas').addEventListener('pointerdown', (event) => {
   const canvas = event.currentTarget;
-  if (event.pointerType !== 'mouse' || !game || !game._web_state || document.pointerLockElement === canvas) return;
-  if (!game.HEAPU32[(game._web_state() >> 2) + MOUSE_WANTED_WORD]) return;
+
+  if (
+    event.pointerType !== 'mouse' ||
+    !game ||
+    !game._web_state ||
+    document.pointerLockElement === canvas
+  ) {
+    return;
+  }
+
+  if (
+    !game.HEAPU32[
+      (game._web_state() >> 2) + MOUSE_WANTED_WORD
+    ]
+  ) {
+    return;
+  }
+
   const request = canvas.requestPointerLock();
-  if (request && request.catch) request.catch(() => {});
+
+  if (request && request.catch) {
+    request.catch(() => {});
+  }
 });
 
 let game = null;
 
+// ---------- loading indicator
+
 function watchFrames() {
   let shown = -1;
   let changed = performance.now();
+
   const timer = setInterval(() => {
     if (gameStopped) {
       clearInterval(timer);
       $('starting').hidden = true;
       return;
     }
+
     if (!game || !game._web_state) return;
-    const now = game.HEAPU32[game._web_state() >> 2];
+
+    const now = game.HEAPU32[
+      game._web_state() >> 2
+    ];
+
     if (now !== shown) {
       if (shown < 0 && now === 0) return;
+
       shown = now;
       changed = performance.now();
+
       $('starting').hidden = true;
-    } else if (performance.now() - changed > 600 && $('starting').hidden) {
+
+    } else if (
+      performance.now() - changed > 600 &&
+      $('starting').hidden
+    ) {
       $('starting-text').textContent = 'Loading…';
       $('starting').hidden = false;
     }
+
   }, 200);
 }
+
+// ---------- controls
 
 $('play').addEventListener('click', play);
 
 $('fullscreen').addEventListener('click', async () => {
   try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await $('game').requestFullscreen({ navigationUI: 'hide' });
-    if (navigator.keyboard && navigator.keyboard.lock && document.fullscreenElement) {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else {
+      await $('game').requestFullscreen({
+        navigationUI: 'hide'
+      });
+    }
+
+    if (
+      navigator.keyboard &&
+      navigator.keyboard.lock &&
+      document.fullscreenElement
+    ) {
       await navigator.keyboard.lock(['Escape']).catch(() => {});
     }
+
   } catch (error) {
     logLine('fullscreen: ' + error);
   }
 });
 
 $('leave').addEventListener('click', () => {
-  if (confirm('Quit the game? Progress since the last checkpoint is lost.')) location.reload();
+  if (
+    confirm('Quit the game? Progress since the last checkpoint is lost.')
+  ) {
+    location.reload();
+  }
 });
 
 window.addEventListener('keydown', (event) => {
-  if (gameStarted && !gameStopped && event.key === 'Tab') event.preventDefault();
+  if (gameStarted && !gameStopped && event.key === 'Tab') {
+    event.preventDefault();
+  }
 }, true);
 
-$('canvas').addEventListener('click', () => $('canvas').focus());
-$('canvas').addEventListener('contextmenu', (event) => event.preventDefault());
+$('canvas').addEventListener('click', () => {
+  $('canvas').focus();
+});
+
+$('canvas').addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+});
+
+// ---------- screen wake lock
 
 document.addEventListener('visibilitychange', async () => {
-  if (gameStarted && !gameStopped && document.visibilityState === 'visible' && navigator.wakeLock && !wakeLock) {
+  if (
+    gameStarted &&
+    !gameStopped &&
+    document.visibilityState === 'visible' &&
+    navigator.wakeLock &&
+    !wakeLock
+  ) {
     try {
       wakeLock = await navigator.wakeLock.request('screen');
     } catch {
       // as before
     }
   }
-  if (document.visibilityState === 'hidden') wakeLock = null;
+
+  if (document.visibilityState === 'hidden') {
+    wakeLock = null;
+  }
 });
 
-// ---------- start
+// ---------- automatic startup
 
 (async () => {
   await isolate();
+
   await loadStamp();
+
   checksPassed = await runChecks();
+
   if (!checksPassed) {
-    $('checks-note').textContent = 'Desktop Chrome, Edge and Firefox run the game; Safari 17 or later may.';
+    $('checks-note').textContent =
+      'Desktop Chrome, Edge and Firefox run the game; Safari 17 or later may.';
+
     $('checks-note').hidden = false;
   }
+
   if (results.opfs === 'good') {
+
     await refreshData();
+
     await refreshMods();
+
     await refreshCustomMaps();
+
+    // AUTOMATIC ROM DOWNLOAD
+    // Only downloads if the game data is missing.
+
+    if (checksPassed && !dataReady) {
+
+      $('import-text').textContent =
+        'Game data is missing. Starting the download automatically…';
+
+      await downloadAndCombineROM();
+
+    }
+
   } else {
     updatePlay();
   }
+
   checkForUpdate();
+
   window.HaloServers.start({
     networkVersion: () => stamp.network_version,
     visible: () => !gameStarted,
-    onPlay: joinServer,
+    onPlay: joinServer
   });
-  if (/^[0-9a-f]{32}$/.test(params.get('room') || '')) await joinRoom(params.get('room'));
-  if (params.has('play')) play();
+
+  if (/^[0-9a-f]{32}$/.test(params.get('room') || '')) {
+    await joinRoom(params.get('room'));
+  }
+
+  if (params.has('play')) {
+    play();
+  }
+
 })();
