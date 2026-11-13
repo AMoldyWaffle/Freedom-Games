@@ -1,28 +1,28 @@
 /*
 APP.JS
 
-The launcher page (index.html): it checks that the browser can run the game,
+The launcher page (index.html)[cite: 1]: it checks that the browser can run the game,
 copies the game data in from the player's disc image (xiso-worker.js) and
 the player's mods (mods-worker.js), and starts the game (halo.js and halo.wasm: tools/web_build.py), whose canvas
-then fills the page.
+then fills the page[cite: 2].
 
 - The game's threads need SharedArrayBuffer, so a cross-origin isolated
   page: GitHub Pages cannot send the headers for it, the service worker
-  (sw.js) adds them, and the first visit loads the page once more under it.
+  (sw.js) adds them, and the first visit loads the page once more under it[cite: 2].
 - The game reads its maps, and keeps its saved games, config.toml and
   debug.txt, in the Origin Private File System (port/web/src/web_main.c
-  mounts it at /data). Each origin has its own: the github.io address and
-  the site's own domain do not share them.
+  mounts it at /data)[cite: 2]. Each origin has its own: the github.io address and
+  the site's own domain do not share them[cite: 2].
 - Query parameters, for testing: ?set=NAME=value (any number) passes a
   setting's environment variable (port/linux/README.md, the settings
   table), ?room=<secret> joins a room (net.js; ?brokers= names other
   message brokers, for internet play's signalling too), ?menu=<screen> opens
   a menu screen (debug.menu_open), ?map=<level> starts a level (a10, or
   levels\a10\a10: the init.txt the game reads, which the page removes again
-  the next time), ?play starts the game at once when it can.
+  the next time), ?play starts the game at once when it can[cite: 2].
 - ?join=<invite> (a halo://join/ link's code, which native builds and the
   game here make: port/linux/src/p2p.c) joins that internet game once the
-  game starts; the Servers panel (servers.js) sets it with Play here.
+  game starts; the Servers panel (servers.js) sets it with Play here[cite: 2].
 */
 
 'use strict';
@@ -132,7 +132,7 @@ $('update-button').addEventListener('click', () => {
   navigator.serviceWorker.controller.postMessage('update');
 });
 
-// ---------- cross-origin isolation (sw.js)
+// ---------- cross-origin isolation (sw.js)[cite: 2]
 
 async function isolate() {
   if (window.crossOriginIsolated || !('serviceWorker' in navigator) || !window.isSecureContext) return;
@@ -216,7 +216,7 @@ async function runChecks() {
   return required.every((name) => results[name] === 'good');
 }
 
-// ---------- the game data (xiso-worker.js)
+// ---------- the game data (xiso-worker.js)[cite: 2]
 
 let dataReady = false;
 let launcherStorageActive = false;
@@ -227,7 +227,7 @@ function formatBytes(bytes) {
 
 async function refreshData() {
   dataReady = false;
-  let text = 'No game data yet: choose your disc image of Halo: Combat Evolved for the Xbox.';
+  let text = 'No game data yet: click the button above to download and combine the ROM from GitHub.';
   try {
     const root = await navigator.storage.getDirectory();
     const maps = await root.getDirectoryHandle('maps');
@@ -253,8 +253,6 @@ async function refreshStorage() {
   $('persist').disabled = persisted;
 }
 
-// Existing Xbox/mod workers retain their formats and copy behavior. This page
-// guard only prevents storage mutation while another tab has an open game.
 async function beginStorageTask(statusId) {
   if (mapImportWorker || launcherStorageActive || gameStarted) return null;
   setImporting(true);
@@ -279,7 +277,6 @@ async function importData(message) {
   $('import-bar').style.width = '0';
   $('import-text').textContent = 'Reading…';
   setImporting(true);
-  // (asked before the copy: the maps are 2 GB the browser should not drop)
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   worker.onmessage = async (event) => {
     const data = event.data;
@@ -310,8 +307,11 @@ async function importData(message) {
 function setImporting(importing) {
   launcherStorageActive = importing;
   const busy = importing || !!mapImportWorker;
-  for (const id of ['image-label', 'folder-label']) $(id).classList.toggle('disabled', busy);
-  $('image-input').disabled = busy;
+  const downloadBtn = $('download-rom-btn');
+  if (downloadBtn) {
+    downloadBtn.classList.toggle('disabled', busy);
+    downloadBtn.disabled = busy;
+  }
   $('folder-input').disabled = busy;
   for (const id of mapImportControls) $(id).disabled = busy;
   $('mod-label').classList.toggle('disabled', busy);
@@ -320,19 +320,65 @@ function setImporting(importing) {
   $('play').disabled = busy || !canPlay();
 }
 
-$('image-input').addEventListener('change', (event) => {
-  const file = event.target.files[0];
-  event.target.value = '';
-  if (file) importData({ type: 'image', file });
-});
-$('folder-input').addEventListener('change', (event) => {
-  const files = [...event.target.files];
-  event.target.value = '';
-  if (files.length) importData({ type: 'folder', files });
-});
+// ---------- GitHub ROM Downloader & Combiner
 
-// CE and MCC imports have separate format policy and storage roots. The
-// worker's transaction owns cancellation/recovery; terminating it is not cancel.
+async function downloadAndCombineROM() {
+  const release = await beginStorageTask('import-text');
+  if (!release) return;
+
+  $('import-progress').hidden = false;
+  $('import-bar').style.width = '0';
+  $('import-text').textContent = 'Connecting to GitHub repository...';
+  setImporting(true);
+
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
+
+  const totalParts = 120;
+  const baseUrl = 'https://raw.githubusercontent.com/AMoldyWaffle/HaloCEROM/main/Halo%20-%20Combat%20Evolved%20(USA)%20(Rev%201).xiso_part_';
+  const chunks = [];
+  let totalBytesLoaded = 0;
+
+  try {
+    for (let i = 1; i <= totalParts; i++) {
+      const partNum = String(i).padStart(3, '0');
+      const url = `${baseUrl}${partNum}.iso`;
+
+      $('import-text').textContent = `Downloading part ${i} of ${totalParts}...`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch part ${partNum} (HTTP ${response.status})`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      chunks.push(buffer);
+      totalBytesLoaded += buffer.byteLength;
+
+      const percent = (i / totalParts) * 100;
+      $('import-bar').style.width = percent.toFixed(1) + '%';
+      $('import-text').textContent = `Downloaded part ${i} of ${totalParts} (${formatBytes(totalBytesLoaded)})`;
+    }
+
+    $('import-text').textContent = 'Combining parts into disc image...';
+    const combinedBlob = new Blob(chunks, { type: 'application/octet-stream' });
+    const file = new File([combinedBlob], 'Halo - Combat Evolved (USA) (Rev 1).iso', { type: 'application/octet-stream' });
+
+    await release();
+    await importData({ type: 'image', file });
+
+  } catch (error) {
+    await release();
+    $('import-text').textContent = 'Download failed: ' + error.message;
+    logLine('rom download failed: ' + error.message);
+    setImporting(false);
+  }
+}
+
+$('download-rom-btn').addEventListener('click', downloadAndCombineROM);
+
+// CE and MCC imports have separate format policy and storage roots[cite: 2].
 let mapImportWorker = null;
 const mapImportControls = ['ce-files-input', 'ce-folder-input', 'mcc-folder-input', 'mcc-package-name'];
 
@@ -399,17 +445,15 @@ $('map-import-cancel').addEventListener('click', () => {
   mapImportWorker.postMessage({ type: 'cancel' });
 });
 
-// ---------- mods (mods-worker.js): /data/mods, all of them played unless
-// the game's main menu's Mods turns them off (port/linux/src/port_mods.c)
+// ---------- mods (mods-worker.js)[cite: 2]
 
-// the name a mod's mod.toml gives it, else its folder's
 async function modName(directory, folder) {
   try {
     const text = await (await (await directory.getFileHandle('mod.toml')).getFile()).text();
     const match = /^\s*name\s*=\s*"([^"\n]*)"/m.exec(text);
     if (match && match[1].trim()) return match[1].trim();
   } catch {
-    // (none: not a mod the game plays)
+    // none
   }
   return folder;
 }
@@ -426,8 +470,6 @@ async function refreshMods() {
   } catch {
     // no mods folder yet
   }
-  // (as the game orders them by default: their folders' names, whatever the
-  // case of their A to Z, port_mods.c's names_compare)
   const key = (folder) => folder.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
   found.sort((first, second) => (key(first.folder) < key(second.folder) ? -1 : 1));
   list.replaceChildren(...found.map(({ folder, name }) => {
@@ -499,7 +541,6 @@ $('delete-data').addEventListener('click', async () => {
   try {
     const root = await navigator.storage.getDirectory();
     await root.removeEntry('maps', { recursive: true }).catch(() => {});
-    // (and the game's copies of them, save/z/cache000.map and on)
     try {
       const drive = await (await root.getDirectoryHandle('save')).getDirectoryHandle('z');
       for await (const [name] of drive.entries()) {
@@ -517,7 +558,7 @@ $('persist').addEventListener('click', async () => {
   await refreshStorage();
 });
 
-// ---------- saved games out, as a zip (stored, not compressed)
+// ---------- saved games out, as a zip[cite: 2]
 
 const crcTable = (() => {
   const table = new Uint32Array(256);
@@ -575,9 +616,6 @@ function zip(entries) {
   return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
 }
 
-// the saved games and profiles, not the maps the game keeps a copy of as the
-// Xbox's hard disk did (save/z/cache000.map and on: hundreds of MB the game
-// makes again)
 async function collect(directory, prefix, entries) {
   for await (const [name, handle] of directory.entries()) {
     if (/^cache\d+\.map$/i.test(name) || (prefix === 'save/z/' && name === 'maps')) continue;
@@ -622,7 +660,6 @@ function canPlay() {
   return checksPassed && dataReady && !gameStarted && !mapImportWorker && !launcherStorageActive;
 }
 
-// the Ready to play screen's rows: a row good or bad, and its value
 function summarize(id, good, text) {
   $(id).classList.toggle('good', good === true);
   $(id).classList.toggle('bad', good === false);
@@ -637,9 +674,6 @@ function updatePlay() {
   summarize('summary-data', dataReady, dataReady ? $('data-status').textContent : 'Needed first');
 }
 
-// init.txt in the data folder: the console commands the game runs as it
-// starts. ?map= writes one, and the page removes it on the next visit
-// without ?map=, only if it wrote it.
 const INIT_MARKER = 'opence-page-wrote-init';
 
 async function prepareInit() {
@@ -648,7 +682,7 @@ async function prepareInit() {
   try {
     wrote = localStorage.getItem(INIT_MARKER) === '1';
   } catch {
-    // (no localStorage: nothing to undo)
+    // no localStorage
   }
   if (params.has('map')) {
     const name = params.get('map');
@@ -673,7 +707,7 @@ async function prepareInit() {
   }
 }
 
-// ---------- rooms (net.js)
+// ---------- rooms (net.js)[cite: 2]
 
 function roomLink(secret) {
   return `${location.origin}${location.pathname}?room=${secret}`;
@@ -719,16 +753,13 @@ $('room-leave').addEventListener('click', () => {
 
 function gameArguments() {
   const args = [];
-  // (the game's address in the room: port/web/src/web_net.c)
   if (window.HaloNet.address()) args.push('--HALO_WEB_ADDRESS=' + window.HaloNet.address());
   for (const value of params.getAll('set')) {
     if (/^[A-Z0-9_]+=/.test(value)) args.push('--' + value);
   }
   if (params.has('menu')) args.push('--HALO_MENU_OPEN=' + params.get('menu'));
-  // internet play's brokers (port/linux/src/p2p_signal.c), if not its own
   const brokers = (params.get('brokers') || '').split(',').filter((url) => /^wss?:\/\/[^,\s]+$/.test(url));
   if (brokers.length) args.push('--HALO_WEB_BROKERS=' + brokers.join(','));
-  // an invite to join (its code, or a whole link)
   const invite = /([0-9a-f]{64})\s*$/i.exec(params.get('join') || '');
   if (invite) args.push('halo://join/' + invite[1].toLowerCase());
   return args;
@@ -742,9 +773,6 @@ function showFatal(text) {
   if (document.exitPointerLock) document.exitPointerLock();
 }
 
-// a game hosted for the internet: its invite as this page's address with
-// ?join= (which native builds take too), and a button that copies it (a
-// page may write the clipboard only when it is clicked)
 function showInvite(text) {
   const code = /([0-9a-f]{64})/.exec(text);
   if (!code) return;
@@ -753,8 +781,6 @@ function showInvite(text) {
   $('invite').hidden = false;
 }
 
-// a master server's page that links a Discord account (player_link.c): a
-// page opens a tab only when it is clicked, so the dialog's button opens it
 function showLinkPage(url) {
   if (!/^https?:\/\/[^\s]+\/link\?/.test(url)) return;
   $('ask-title').textContent = 'Link Discord';
@@ -785,8 +811,6 @@ $('invite-copy').addEventListener('click', async () => {
 });
 $('invite-close').addEventListener('click', () => { $('invite').hidden = true; });
 
-// Play here on the Servers panel (servers.js): the server's invite as ?join=,
-// and the game starts at once when it can
 function joinServer(code) {
   if (!/^[0-9a-f]{64}$/.test(code) || gameStarted) return;
   params.set('join', code);
@@ -830,7 +854,7 @@ async function play() {
   try {
     if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request('screen');
   } catch {
-    // (a phone may still dim)
+    // phone dim
   }
   try {
     await prepareInit();
@@ -845,19 +869,15 @@ async function play() {
         if (!$('starting').hidden && /data root:/.test(text)) $('starting-text').textContent = 'Loading the menus…';
       },
       haloNetSend: (address, reliable, bytes) => window.HaloNet.send(address, reliable, bytes),
-      // internet play's WebRTC connections (p2p.js)
       haloP2P: (command, connection, bytes) => window.HaloP2P.command(command, connection, bytes),
       haloMccStorage: (action, payload) => window.HaloMapStorage.dispatch(action, payload),
       haloMessage: (kind, text) => {
         logLine(text);
         if (kind === 2) showInvite(text);
         if (kind === 3) showFatal(text);
-        // (the game quits, as the player asked: the page starts again)
         if (kind === 4) location.reload();
         if (kind === 5) showLinkPage(text);
       },
-      // a question the game waits on (sdl_platform.c's platform_ask: the
-      // mods that cannot be played together), answered with a button's index
       haloAsk: (title, text, labels, answer) => {
         logLine(`${title}: ${text}`);
         $('ask-title').textContent = title;
@@ -872,7 +892,6 @@ async function play() {
           });
           return button;
         }));
-        // (the dialog is the page's: out of the game's full screen)
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         $('ask').hidden = false;
       },
@@ -882,11 +901,8 @@ async function play() {
         else location.reload();
       },
     };
-    // (the module these options become, which p2p.js calls into as soon as
-    // the game asks it for a connection)
     window.HaloP2P.attach(options);
     game = await window.createHalo(options);
-    // the on-screen touch controls (touch.js), and the room's frames (net.js)
     window.HaloTouch.start(game, $('touch'));
     window.HaloNet.attach(game);
   } catch (error) {
@@ -894,10 +910,6 @@ async function play() {
   }
 }
 
-// While the game wants the mouse for the aim (its word in web_shared.h,
-// port/web/src), a click on it takes the pointer lock back, from the click
-// itself: the game's own request comes from its thread, after the click, and
-// the browser refuses that once the player has let the lock go (Escape).
 const MOUSE_WANTED_WORD = 48;
 
 $('canvas').addEventListener('pointerdown', (event) => {
@@ -905,13 +917,9 @@ $('canvas').addEventListener('pointerdown', (event) => {
   if (event.pointerType !== 'mouse' || !game || !game._web_state || document.pointerLockElement === canvas) return;
   if (!game.HEAPU32[(game._web_state() >> 2) + MOUSE_WANTED_WORD]) return;
   const request = canvas.requestPointerLock();
-  // (refused for a moment after Escape: the next click asks again)
   if (request && request.catch) request.catch(() => {});
 });
 
-// The game counts the frames it shows in its memory (web_state,
-// port/web/src/web_main.c), which the page reads: while the count stands
-// still, the game is starting or loading a map, and the page says so.
 let game = null;
 
 function watchFrames() {
@@ -943,7 +951,6 @@ $('fullscreen').addEventListener('click', async () => {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await $('game').requestFullscreen({ navigationUI: 'hide' });
-    // (Escape is the game's in fullscreen too, where the browser lets it)
     if (navigator.keyboard && navigator.keyboard.lock && document.fullscreenElement) {
       await navigator.keyboard.lock(['Escape']).catch(() => {});
     }
@@ -956,8 +963,6 @@ $('leave').addEventListener('click', () => {
   if (confirm('Quit the game? Progress since the last checkpoint is lost.')) location.reload();
 });
 
-// Tab is the game's (switch weapons, the scoreboard), not the page's focus;
-// the key still reaches the game (SDL listens on the window)
 window.addEventListener('keydown', (event) => {
   if (gameStarted && !gameStopped && event.key === 'Tab') event.preventDefault();
 }, true);

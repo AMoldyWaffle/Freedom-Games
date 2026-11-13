@@ -36,14 +36,11 @@
               <p id="import-text" class="note"></p>
             </div>
           </div>
-          <p class="help">Choose your own disc image of Halo: Combat Evolved for the Xbox (.iso). It is copied
-            into this browser's storage; nothing is uploaded.</p>
+          <p class="help">Automatically downloads and combines the 120 split parts of Halo: Combat Evolved from GitHub into this browser's storage; nothing is uploaded[cite: 1].</p>
           <p id="play-note" class="help note"></p>
           <p id="checks-note" class="help note" hidden></p>
           <div class="button-bar">
-            <label class="button" id="image-label">Choose a disc image…
-              <input type="file" id="image-input" accept=".iso,.xiso,application/octet-stream" hidden>
-            </label>
+            <button id="download-rom-btn" class="button primary">Download &amp; Combine ROM from GitHub</button>
             <button id="play" class="primary play" disabled>Play</button>
           </div>
         </section>
@@ -59,6 +56,7 @@
   <div id="summary-data"><span id="summary-data-value"></span></div>
   <div id="summary-mods"><span id="summary-mods-value"></span></div>
   <label id="folder-label"><input type="file" id="folder-input" webkitdirectory multiple></label>
+  <label id="image-label"><input type="file" id="image-input" accept=".iso,.xiso,application/octet-stream" hidden></label>
   <p id="custom-maps-list"></p>
   <label id="ce-files-label"><input type="file" id="ce-files-input" accept=".map" multiple></label>
   <label id="ce-folder-label"><input type="file" id="ce-folder-input" webkitdirectory multiple></label>
